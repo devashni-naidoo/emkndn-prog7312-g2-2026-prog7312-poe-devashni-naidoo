@@ -1,0 +1,7 @@
+bin/
+obj/
+*.user
+.vs/
+uploads/
+**/wwwroot/uploads/
+appsettings.*.local.json
