@@ -1,0 +1,192 @@
+@page "/sensors/register"
+@rendermode InteractiveServer
+@using SmartX.Shared.Dtos
+@using SmartX.Shared.Models
+@using SmartX.Client.Services
+@inject SmartXApiClient Api
+
+<PageTitle>Smart-X · Register Sensor</PageTitle>
+
+<div class="page-header">
+    <h1>Register Sensor</h1>
+    <p>
+        Simulate or attach a device record. The deployment path (Facility &rarr;
+        Zone &rarr; Sub-Zone &rarr; Node) is validated recursively server-side
+        before the sensor is accepted.
+    </p>
+</div>
+
+<div class="panel" style="max-width: 640px;">
+    <EditForm Model="_form" OnValidSubmit="SubmitAsync">
+        <div class="field-grid">
+            <div class="field">
+                <label for="mac">MAC address / unique identifier</label>
+                <input id="mac" @bind="_form.MacAddress" placeholder="AA:BB:CC:DD:EE:01" />
+            </div>
+            <div class="field">
+                <label for="category">Sensor category</label>
+                <select id="category" @bind="_form.Category">
+                    <option value="@SensorCategory.Environmental">Environmental</option>
+                    <option value="@SensorCategory.PowerConsumption">Power Consumption</option>
+                    <option value="@SensorCategory.Actuator">Actuator</option>
+                </select>
+            </div>
+
+            <div class="field">
+                <label for="facility">Facility</label>
+                <input id="facility" @bind="_form.Facility" placeholder="Facility A" />
+            </div>
+            <div class="field">
+                <label for="zone">Zone</label>
+                <input id="zone" @bind="_form.Zone" placeholder="Zone 1" />
+            </div>
+            <div class="field">
+                <label for="subzone">Sub-Zone</label>
+                <input id="subzone" @bind="_form.SubZone" placeholder="Sub-Zone B" />
+            </div>
+            <div class="field">
+                <label for="node">Node ID</label>
+                <input id="node" @bind="_form.NodeId" placeholder="Node-07" />
+            </div>
+            <div class="field" style="grid-column: 1 / -1;">
+                <label for="room">Room</label>
+                <input id="room" @bind="_form.Room" placeholder="Server Room 2" />
+                <span class="field-hint">Descriptive only — not part of the validated hierarchy.</span>
+            </div>
+        </div>
+
+        <div style="margin-top: 16px; display:flex; align-items:center; gap: 10px;">
+            <button class="btn btn-primary" type="submit" disabled="@_submitting">
+                @(_submitting ? "Registering..." : "Register sensor")
+            </button>
+        </div>
+    </EditForm>
+
+    @if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <div class="banner banner-error" style="margin-top:14px;">@_errorMessage</div>
+    }
+    @if (_registeredProfile is not null)
+    {
+        <div class="banner banner-success" style="margin-top:14px;">
+            Registered <strong>@_registeredProfile.Location.NodeId</strong> —
+            @_registeredProfile.Location.Facility &rarr; @_registeredProfile.Location.Zone &rarr;
+            @_registeredProfile.Location.SubZone &rarr; @_registeredProfile.Location.NodeId
+        </div>
+
+        <div class="field" style="margin-top:14px;">
+            <label>Attach config file / deployment photo / hardware log</label>
+            <InputFile OnChange="OnFileSelectedAsync" />
+            @if (_uploading)
+            {
+                <span class="field-hint">Uploading...</span>
+            }
+            @if (!string.IsNullOrEmpty(_uploadMessage))
+            {
+                <span class="field-hint">@_uploadMessage</span>
+            }
+        </div>
+    }
+</div>
+
+<h2 style="margin-top:32px;">Registered Sensors</h2>
+@if (_sensors is null)
+{
+    <p class="field-hint">Loading...</p>
+}
+else if (_sensors.Count == 0)
+{
+    <div class="empty-state">No sensors registered yet — use the form above.</div>
+}
+else
+{
+    <table class="table-simple">
+        <thead>
+            <tr>
+                <th>Node</th>
+                <th>MAC</th>
+                <th>Category</th>
+                <th>Deployment path</th>
+                <th>Attachments</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var s in _sensors)
+            {
+                <tr>
+                    <td>@s.Location.NodeId</td>
+                    <td style="font-family: var(--font-mono); font-size: 0.82rem;">@s.MacAddress</td>
+                    <td>@s.Category</td>
+                    <td>@s.Location.Facility &rarr; @s.Location.Zone &rarr; @s.Location.SubZone</td>
+                    <td>@s.Attachments.Count</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private readonly RegisterSensorRequest _form = new();
+    private List<DeviceProfile>? _sensors;
+    private DeviceProfile? _registeredProfile;
+    private string? _errorMessage;
+    private string? _uploadMessage;
+    private bool _submitting;
+    private bool _uploading;
+
+    protected override async Task OnInitializedAsync() => await ReloadSensorsAsync();
+
+    private async Task ReloadSensorsAsync()
+    {
+        _sensors = await Api.GetSensorsAsync();
+    }
+
+    private async Task SubmitAsync()
+    {
+        _submitting = true;
+        _errorMessage = null;
+        _registeredProfile = null;
+        _uploadMessage = null;
+
+        var (success, error, profile) = await Api.RegisterSensorAsync(_form);
+        if (success)
+        {
+            _registeredProfile = profile;
+            await ReloadSensorsAsync();
+        }
+        else
+        {
+            _errorMessage = error ?? "Registration failed.";
+        }
+
+        _submitting = false;
+    }
+
+    private async Task OnFileSelectedAsync(InputFileChangeEventArgs e)
+    {
+        if (_registeredProfile is null) return;
+
+        _uploading = true;
+        _uploadMessage = null;
+
+        const long maxSize = 10 * 1024 * 1024;
+        try
+        {
+            var file = e.File;
+            await using var stream = file.OpenReadStream(maxSize);
+            var (success, error) = await Api.UploadMediaAsync(
+                _registeredProfile.Id, stream, file.Name, file.ContentType);
+
+            _uploadMessage = success ? $"Attached '{file.Name}'." : (error ?? "Upload failed.");
+            if (success) await ReloadSensorsAsync();
+        }
+        catch (Exception ex)
+        {
+            _uploadMessage = $"Upload failed: {ex.Message}";
+        }
+        finally
+        {
+            _uploading = false;
+        }
+    }
+}
