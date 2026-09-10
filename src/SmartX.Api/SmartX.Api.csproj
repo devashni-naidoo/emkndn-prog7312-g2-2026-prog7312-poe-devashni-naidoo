@@ -6,8 +6,18 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
+  <!--
+    NOTE: Swagger/OpenAPI (Swashbuckle.AspNetCore) is intentionally NOT
+    referenced here. This project was built in a sandboxed environment with
+    no NuGet network access, so every dependency had to resolve from the
+    already-installed .NET SDK shared framework only. On your own machine,
+    with normal internet access, you can add Swagger back with:
+        dotnet add package Swashbuckle.AspNetCore
+    and then restore the two commented-out lines in Program.cs. See README.md.
+  -->
+
   <ItemGroup>
-    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
+    <ProjectReference Include="..\SmartX.Shared\SmartX.Shared.csproj" />
   </ItemGroup>
 
 </Project>
