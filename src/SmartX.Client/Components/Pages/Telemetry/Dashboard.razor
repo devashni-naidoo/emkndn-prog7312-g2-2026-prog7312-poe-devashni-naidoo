@@ -1,0 +1,231 @@
+@page "/telemetry"
+@rendermode InteractiveServer
+@using SmartX.Shared.Dtos
+@using SmartX.Shared.Models
+@using SmartX.Client.Services
+@inject SmartXApiClient Api
+@implements IAsyncDisposable
+
+<PageTitle>Smart-X · Telemetry Dashboard</PageTitle>
+
+<div class="page-header">
+    <h1>Telemetry Dashboard</h1>
+    <p>
+        Real-time visual feedback — trend sparklines, delta indicators and
+        threshold-based colour coding — the engagement strategy selected in
+        the Task 1 research report. Refreshes every 2 seconds.
+    </p>
+</div>
+
+@if (_sensors is null)
+{
+    <p class="field-hint">Loading sensors...</p>
+}
+else if (_sensors.Count == 0)
+{
+    <div class="empty-state">
+        No sensors registered yet. <a href="sensors/register">Register one</a> to begin streaming telemetry.
+    </div>
+}
+else
+{
+    <div class="panel" style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+        <span class="field-hint">Simulate readings for:</span>
+        @foreach (var s in _sensors)
+        {
+            <button class="btn btn-sm @(IsRunning(s.Id) ? "btn-primary" : "")"
+                    @onclick="() => ToggleSimulationAsync(s.Id)">
+                @(IsRunning(s.Id) ? "■ Stop " : "▶ Start ") @s.Location.NodeId
+            </button>
+        }
+    </div>
+
+    @if (_sensors.Count >= 2)
+    {
+        <div class="panel" style="margin-top:12px; display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+            <span class="field-hint">Aggregate demo (operator overload, Meter3 = Meter1 + Meter2):</span>
+            <select @bind="_meterA">
+                @foreach (var s in _sensors) { <option value="@s.Id">@s.Location.NodeId</option> }
+            </select>
+            <span class="field-hint">+</span>
+            <select @bind="_meterB">
+                @foreach (var s in _sensors) { <option value="@s.Id">@s.Location.NodeId</option> }
+            </select>
+            <button class="btn btn-sm" @onclick="AggregateAsync">Compute</button>
+            @if (!string.IsNullOrEmpty(_aggregateResult))
+            {
+                <span class="field-hint">@_aggregateResult</span>
+            }
+        </div>
+    }
+
+    <div class="telemetry-grid">
+        @foreach (var snap in _snapshots.OrderBy(s => s.DisplayName))
+        {
+            var statusClass = StatusClass(snap.Status);
+            <div class="telemetry-card @statusClass">
+                <div class="telemetry-card-head">
+                    <div>
+                        <div class="telemetry-name">@snap.DisplayName</div>
+                        <div class="telemetry-zone">@snap.Zone</div>
+                    </div>
+                    <span class="telemetry-badge @statusClass">@snap.Status</span>
+                </div>
+
+                <div class="telemetry-value-row">
+                    <span class="telemetry-value">@snap.LatestValue.ToString("0.0")@snap.Unit</span>
+                    <span class="telemetry-delta @DeltaClass(snap.DeltaPercent)">
+                        @(snap.DeltaPercent >= 0 ? "▲" : "▼") @Math.Abs(snap.DeltaPercent).ToString("0.0")%
+                    </span>
+                </div>
+
+                <svg class="telemetry-sparkline" viewBox="0 0 100 32" preserveAspectRatio="none">
+                    @if (snap.Sparkline.Length > 1)
+                    {
+                        <polyline points="@BuildSparklinePoints(snap.Sparkline)"
+                                  fill="none"
+                                  stroke="@SparklineColor(snap.Status)"
+                                  stroke-width="2"
+                                  stroke-linecap="round"
+                                  stroke-linejoin="round" />
+                    }
+                </svg>
+
+                <div class="telemetry-footer">
+                    <span>
+                        @if (snap.Status == TelemetryStatus.Disconnected)
+                        {
+                            <text>No telemetry for @snap.SecondsSinceUpdate.ToString("0")s</text>
+                        }
+                        else
+                        {
+                            <text>Updated @snap.SecondsSinceUpdate.ToString("0")s ago</text>
+                        }
+                    </span>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private List<DeviceProfile>? _sensors;
+    private List<TelemetrySnapshotDto> _snapshots = new();
+    private readonly HashSet<string> _running = new();
+    private PeriodicTimer? _timer;
+    private CancellationTokenSource? _cts;
+    private string? _meterA;
+    private string? _meterB;
+    private string? _aggregateResult;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _sensors = await Api.GetSensorsAsync();
+        if (_sensors.Count > 0)
+        {
+            _meterA = _sensors[0].Id;
+            _meterB = _sensors[Math.Min(1, _sensors.Count - 1)].Id;
+        }
+        await RefreshAsync();
+
+        _cts = new CancellationTokenSource();
+        _timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
+        _ = PollLoopAsync(_cts.Token);
+    }
+
+    private async Task PollLoopAsync(CancellationToken token)
+    {
+        try
+        {
+            while (await _timer!.WaitForNextTickAsync(token))
+            {
+                await RefreshAsync();
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected on dispose.
+        }
+    }
+
+    private async Task RefreshAsync()
+    {
+        _snapshots = await Api.GetAllTelemetryAsync();
+    }
+
+    private bool IsRunning(string sensorId) => _running.Contains(sensorId);
+
+    private async Task ToggleSimulationAsync(string sensorId)
+    {
+        if (IsRunning(sensorId))
+        {
+            await Api.StopSimulationAsync(sensorId);
+            _running.Remove(sensorId);
+        }
+        else
+        {
+            await Api.StartSimulationAsync(sensorId);
+            _running.Add(sensorId);
+        }
+    }
+
+    private async Task AggregateAsync()
+    {
+        if (string.IsNullOrEmpty(_meterA) || string.IsNullOrEmpty(_meterB)) return;
+        var result = await Api.AggregateMetersAsync(_meterA, _meterB);
+        _aggregateResult = result?.ToString() ?? "No readings yet for one of those sensors.";
+    }
+
+    private static string StatusClass(TelemetryStatus status) => status switch
+    {
+        TelemetryStatus.Normal => "status-normal",
+        TelemetryStatus.Warning => "status-warning",
+        TelemetryStatus.Anomalous => "status-anomalous",
+        TelemetryStatus.Disconnected => "status-disconnected",
+        _ => "status-normal"
+    };
+
+    private static string DeltaClass(double deltaPercent) =>
+        deltaPercent > 0.5 ? "up" : deltaPercent < -0.5 ? "down" : "flat";
+
+    private static string SparklineColor(TelemetryStatus status) => status switch
+    {
+        TelemetryStatus.Normal => "#3DDC97",
+        TelemetryStatus.Warning => "#F2B134",
+        TelemetryStatus.Anomalous => "#E5484D",
+        TelemetryStatus.Disconnected => "#5B6472",
+        _ => "#3DDC97"
+    };
+
+    /// <summary>
+    /// Maps a sparkline value series onto a 100x32 viewBox as SVG polyline
+    /// points — this is the client-side half of the real-time visual
+    /// telemetry feedback strategy from the Task 1 research report.
+    /// </summary>
+    private static string BuildSparklinePoints(double[] values, double width = 100, double height = 32)
+    {
+        double min = values.Min();
+        double max = values.Max();
+        double range = max - min;
+        if (range < 1e-9) range = 1;
+
+        var points = new List<string>(values.Length);
+        for (int i = 0; i < values.Length; i++)
+        {
+            double x = values.Length == 1 ? width : (double)i / (values.Length - 1) * width;
+            double normalized = (values[i] - min) / range;
+            double y = height - normalized * height;
+            points.Add($"{x.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)},{y.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)}");
+        }
+        return string.Join(" ", points);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _cts?.Cancel();
+        _timer?.Dispose();
+        _cts?.Dispose();
+        await Task.CompletedTask;
+    }
+}
