@@ -1,0 +1,27 @@
+services:
+  smartx-api:
+    build:
+      context: .
+      dockerfile: src/SmartX.Api/Dockerfile
+    container_name: smartx-api
+    ports:
+      - "5080:8080"
+    environment:
+      - Cors__AllowedOrigins__0=http://localhost:5210
+    volumes:
+      - smartx-api-data:/app/App_Data
+
+  smartx-client:
+    build:
+      context: .
+      dockerfile: src/SmartX.Client/Dockerfile
+    container_name: smartx-client
+    ports:
+      - "5210:8080"
+    environment:
+      - ApiBaseUrl=http://smartx-api:8080
+    depends_on:
+      - smartx-api
+
+volumes:
+  smartx-api-data:
