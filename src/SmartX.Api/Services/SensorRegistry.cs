@@ -37,6 +37,13 @@ public sealed class SensorRegistry
             return (false, "MAC address / unique identifier is required.", null);
         }
 
+        macAddress = macAddress.Trim().ToUpperInvariant();
+        if (_sensors.Values.Any(existing =>
+                string.Equals(existing.MacAddress, macAddress, StringComparison.OrdinalIgnoreCase)))
+        {
+            return (false, $"A sensor with MAC address '{macAddress}' is already registered.", null);
+        }
+
         var profile = new DeviceProfile
         {
             MacAddress = macAddress,
