@@ -1,7 +1,45 @@
-﻿@page "/"
+@page "/"
 
-<PageTitle>Home</PageTitle>
+<PageTitle>Smart-X · Overview</PageTitle>
 
-<h1>Hello, world!</h1>
+<div class="page-header">
+    <h1>Smart-X Ecosystem</h1>
+    <p>
+        Core data ingestion engine. Three architectural pillars make up the
+        full platform; Part 1 of this PoE implements the first.
+    </p>
+</div>
 
-Welcome to your new app.
+<div class="pillar-grid">
+    <div class="pillar enabled">
+        <span class="pillar-index">PILLAR 01</span>
+        <span class="pillar-title">Sensor Data Ingestion &amp; Telemetry</span>
+        <p class="pillar-desc">
+            Register devices, validate their deployment hierarchy, attach
+            config/log files, and watch live readings with anomaly and
+            disconnect highlighting.
+        </p>
+        <span class="pillar-state live"><span class="pip"></span> Active</span>
+        <a class="pillar-cta" href="telemetry">Open dashboard &rarr;</a>
+    </div>
+
+    <div class="pillar disabled">
+        <span class="pillar-index">PILLAR 02</span>
+        <span class="pillar-title">Real-Time Command Stream &amp; History</span>
+        <p class="pillar-desc">
+            Issue commands to deployed devices and replay historical command
+            and telemetry streams.
+        </p>
+        <span class="pillar-state locked"><span class="pip"></span> Part 2</span>
+    </div>
+
+    <div class="pillar disabled">
+        <span class="pillar-index">PILLAR 03</span>
+        <span class="pillar-title">Network Topology &amp; Mesh Routing</span>
+        <p class="pillar-desc">
+            Visualise the device mesh and manage routing between facilities,
+            zones and nodes.
+        </p>
+        <span class="pillar-state locked"><span class="pip"></span> Final PoE</span>
+    </div>
+</div>
