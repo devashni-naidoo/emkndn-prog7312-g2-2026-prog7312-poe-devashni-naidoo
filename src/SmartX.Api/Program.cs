@@ -51,6 +51,8 @@ app.UseCors(ClientCorsPolicy);
 app.UseAuthorization();
 app.MapControllers();
 
+app.MapGet("/health", () => Results.Ok(new { status = "healthy", utc = DateTimeOffset.UtcNow }));
+
 app.MapGet("/", () => Results.Ok(new
 {
     service = "SmartX.Api",
