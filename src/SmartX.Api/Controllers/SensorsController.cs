@@ -128,4 +128,11 @@ public sealed class SensorsController : ControllerBase
 
     [HttpGet("{id}/simulate/status")]
     public ActionResult<object> SimulationStatus(string id) => Ok(new { running = _simulator.IsRunning(id) });
+
+    [HttpGet("{id}/attachments")]
+    public ActionResult<IReadOnlyCollection<SmartX.Shared.Models.MediaAttachment>> GetAttachments(string id)
+    {
+        var profile = _registry.Get(id);
+        return profile is null ? NotFound() : Ok(profile.Attachments);
+    }
 }
