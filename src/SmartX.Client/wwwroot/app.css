@@ -289,6 +289,22 @@ main { flex: 1; min-width: 0; }
 .table-simple th { text-align: left; color: var(--text-faint); font-weight: 500; font-size: 0.75rem; padding: 6px 10px; border-bottom: 1px solid var(--border); }
 .table-simple td { padding: 8px 10px; border-bottom: 1px solid var(--border-soft); }
 
+@media (max-width: 780px) {
+    .page { flex-direction: column; }
+    .sidebar {
+        width: 100%;
+        flex-direction: row;
+        align-items: center;
+        overflow-x: auto;
+        padding: 10px 12px;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+    }
+    .brand { padding: 0 12px 0 0; }
+    .nav-link { white-space: nowrap; }
+    .content { padding: 20px; }
+}
+
 #blazor-error-ui {
     background: var(--status-anomalous);
     color: white;
