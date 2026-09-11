@@ -49,6 +49,19 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors(ClientCorsPolicy);
 app.UseAuthorization();
+
+// Lightweight request logging — handy when demoing the ingestion pipeline
+// live (e.g. for the module's video demo) without needing a separate tool.
+app.Use(async (context, next) =>
+{
+    var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+    var started = DateTimeOffset.UtcNow;
+    await next();
+    var elapsedMs = (DateTimeOffset.UtcNow - started).TotalMilliseconds;
+    logger.LogInformation("{Method} {Path} -> {StatusCode} ({ElapsedMs:F0}ms)",
+        context.Request.Method, context.Request.Path, context.Response.StatusCode, elapsedMs);
+});
+
 app.MapControllers();
 
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", utc = DateTimeOffset.UtcNow }));
