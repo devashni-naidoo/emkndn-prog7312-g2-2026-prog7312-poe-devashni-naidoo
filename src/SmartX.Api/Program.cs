@@ -30,7 +30,15 @@ builder.Services.AddCors(options =>
     {
         var allowedOrigins = builder.Configuration
             .GetSection("Cors:AllowedOrigins")
-            .Get<string[]>() ?? new[] { "https://localhost:5211", "http://localhost:5210" };
+            .Get<string[]>();
+
+        if (allowedOrigins is null || allowedOrigins.Length == 0)
+        {
+            // Sensible defaults for local `dotnet run` (see launchSettings.json
+            // in both projects) — override via Cors:AllowedOrigins in
+            // production/Docker (see docker-compose.yml).
+            allowedOrigins = new[] { "http://localhost:5210", "https://localhost:5211" };
+        }
 
         policy.WithOrigins(allowedOrigins)
               .AllowAnyHeader()
