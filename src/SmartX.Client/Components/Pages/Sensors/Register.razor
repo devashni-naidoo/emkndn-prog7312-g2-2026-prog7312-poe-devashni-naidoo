@@ -143,10 +143,19 @@ else
 
     private async Task SubmitAsync()
     {
-        _submitting = true;
         _errorMessage = null;
         _registeredProfile = null;
         _uploadMessage = null;
+
+        if (string.IsNullOrWhiteSpace(_form.MacAddress) || string.IsNullOrWhiteSpace(_form.Facility) ||
+            string.IsNullOrWhiteSpace(_form.Zone) || string.IsNullOrWhiteSpace(_form.SubZone) ||
+            string.IsNullOrWhiteSpace(_form.NodeId))
+        {
+            _errorMessage = "MAC address, Facility, Zone, Sub-Zone and Node ID are all required.";
+            return;
+        }
+
+        _submitting = true;
 
         var (success, error, profile) = await Api.RegisterSensorAsync(_form);
         if (success)
