@@ -26,6 +26,12 @@ public sealed class SensorRegistry
         string macAddress, string facility, string zone, string subZone, string room,
         string nodeId, SensorCategory category)
     {
+        facility = facility?.Trim() ?? string.Empty;
+        zone = zone?.Trim() ?? string.Empty;
+        subZone = subZone?.Trim() ?? string.Empty;
+        room = room?.Trim() ?? string.Empty;
+        nodeId = nodeId?.Trim() ?? string.Empty;
+
         var validation = DeploymentValidator.ValidateFlat(facility, zone, subZone, nodeId);
         if (!validation.Success)
         {
