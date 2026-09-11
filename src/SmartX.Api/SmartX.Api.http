@@ -1,0 +1,77 @@
+@SmartX.Api_HostAddress = http://localhost:5080
+
+### Root / service info
+GET {{SmartX.Api_HostAddress}}/
+
+### Health check
+GET {{SmartX.Api_HostAddress}}/health
+
+### Register a sensor (valid nested deployment path)
+POST {{SmartX.Api_HostAddress}}/api/sensors
+Content-Type: application/json
+
+{
+  "macAddress": "AA:BB:CC:DD:EE:01",
+  "facility": "Facility A",
+  "zone": "Zone 1",
+  "subZone": "Sub-Zone B",
+  "room": "Server Room 2",
+  "nodeId": "Node-07",
+  "category": 1
+}
+
+### Register a sensor with a missing tier (expect 400 from recursive validation)
+POST {{SmartX.Api_HostAddress}}/api/sensors
+Content-Type: application/json
+
+{
+  "macAddress": "AA:BB:CC:DD:EE:02",
+  "facility": "Facility A",
+  "zone": "Zone 1",
+  "subZone": "",
+  "room": "Server Room 2",
+  "nodeId": "Node-08",
+  "category": 0
+}
+
+### List sensors
+GET {{SmartX.Api_HostAddress}}/api/sensors
+
+### Ingest a single reading (replace {{sensorId}} with an id from the list above)
+POST {{SmartX.Api_HostAddress}}/api/telemetry
+Content-Type: application/json
+
+{
+  "sensorId": "{{sensorId}}",
+  "value": 123.4
+}
+
+### Ingest a batch (jagged-array path)
+POST {{SmartX.Api_HostAddress}}/api/telemetry/batch
+Content-Type: application/json
+
+{
+  "sensorId": "{{sensorId}}",
+  "values": [121, 122, 124, 300]
+}
+
+### Get one sensor's telemetry snapshot
+GET {{SmartX.Api_HostAddress}}/api/telemetry/{{sensorId}}
+
+### Get all telemetry snapshots
+GET {{SmartX.Api_HostAddress}}/api/telemetry
+
+### Aggregate two meters (operator overload demo)
+POST {{SmartX.Api_HostAddress}}/api/telemetry/aggregate
+Content-Type: application/json
+
+{
+  "meterIdA": "{{sensorId}}",
+  "meterIdB": "{{sensorId}}"
+}
+
+### Start simulated readings for a sensor
+POST {{SmartX.Api_HostAddress}}/api/sensors/{{sensorId}}/simulate/start
+
+### Stop simulated readings
+POST {{SmartX.Api_HostAddress}}/api/sensors/{{sensorId}}/simulate/stop
