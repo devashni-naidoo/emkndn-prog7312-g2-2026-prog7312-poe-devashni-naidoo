@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.RegularExpressions;
 using SmartX.Shared.Models;
 using SmartX.Shared.Validation;
 
@@ -12,6 +13,9 @@ namespace SmartX.Api.Services;
 /// </summary>
 public sealed class SensorRegistry
 {
+    private static readonly Regex MacAddressPattern =
+        new(@"^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$", RegexOptions.Compiled);
+
     private readonly ConcurrentDictionary<string, DeviceProfile> _sensors = new();
 
     public IReadOnlyCollection<DeviceProfile> GetAll() => _sensors.Values.ToList();
@@ -44,6 +48,11 @@ public sealed class SensorRegistry
         }
 
         macAddress = macAddress.Trim().ToUpperInvariant();
+        if (!MacAddressPattern.IsMatch(macAddress))
+        {
+            return (false, "MAC address must be in the form AA:BB:CC:DD:EE:FF.", null);
+        }
+
         if (_sensors.Values.Any(existing =>
                 string.Equals(existing.MacAddress, macAddress, StringComparison.OrdinalIgnoreCase)))
         {
