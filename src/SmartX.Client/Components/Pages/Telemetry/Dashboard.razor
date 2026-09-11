@@ -38,6 +38,9 @@ else
                 @(IsRunning(s.Id) ? "■ Stop " : "▶ Start ") @s.Location.NodeId
             </button>
         }
+        <span style="flex:1;"></span>
+        <button class="btn btn-sm" @onclick="ManualRefreshAsync">↻ Refresh now</button>
+        <span class="field-hint">Last polled @_lastPolled.ToString("HH:mm:ss")</span>
     </div>
 
     @if (_sensors.Count >= 2)
@@ -117,6 +120,7 @@ else
     private string? _meterA;
     private string? _meterB;
     private string? _aggregateResult;
+    private DateTimeOffset _lastPolled = DateTimeOffset.Now;
 
     protected override async Task OnInitializedAsync()
     {
@@ -152,6 +156,13 @@ else
     private async Task RefreshAsync()
     {
         _snapshots = await Api.GetAllTelemetryAsync();
+        _lastPolled = DateTimeOffset.Now;
+    }
+
+    private async Task ManualRefreshAsync()
+    {
+        await RefreshAsync();
+        StateHasChanged();
     }
 
     private bool IsRunning(string sensorId) => _running.Contains(sensorId);
