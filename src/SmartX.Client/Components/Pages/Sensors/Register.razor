@@ -74,16 +74,56 @@
             @_registeredProfile.Location.SubZone &rarr; @_registeredProfile.Location.NodeId
         </div>
 
-        <div class="field" style="margin-top:14px;">
-            <label>Attach config file / deployment photo / hardware log</label>
-            <InputFile OnChange="OnFileSelectedAsync" />
+        <div style="margin-top:16px;">
+            <label style="font-size:0.8rem; color:var(--text-dim); font-weight:500; display:block; margin-bottom:8px;">
+                Attach config file / deployment photo / hardware log
+            </label>
+
+            <div class="dropzone">
+                <span class="dropzone-icon">
+                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                    </svg>
+                </span>
+                <span class="dropzone-title">Click to browse, or drop a file here</span>
+                <span class="dropzone-hint">Config files, deployment photos, or hardware logs — up to 10 MB</span>
+                <InputFile OnChange="OnFileSelectedAsync" />
+            </div>
+
             @if (_uploading)
             {
-                <span class="field-hint">Uploading...</span>
+                <div class="file-chip" style="margin-top:10px;">
+                    <span class="spinner"></span>
+                    <span class="file-chip-name">Uploading @_uploadingFileName ...</span>
+                </div>
             }
-            @if (!string.IsNullOrEmpty(_uploadMessage))
+
+            @if (_uploadedFiles.Count > 0)
             {
-                <span class="field-hint">@_uploadMessage</span>
+                <div class="file-chip-list">
+                    @foreach (var f in _uploadedFiles)
+                    {
+                        <div class="file-chip">
+                            <span class="file-chip-icon">
+                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M7 3h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                                    <path d="M14 3v4h4" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                                </svg>
+                            </span>
+                            <span class="file-chip-name">@f.Name</span>
+                            <span class="file-chip-meta">@FormatSize(f.SizeBytes)</span>
+                        </div>
+                    }
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(_uploadError))
+            {
+                <div class="file-chip file-chip-error" style="margin-top:10px;">
+                    <span class="file-chip-icon">!</span>
+                    <span class="file-chip-name">@_uploadError</span>
+                </div>
             }
         </div>
     }
@@ -118,7 +158,14 @@ else
                     <td style="font-family: var(--font-mono); font-size: 0.82rem;">@s.MacAddress</td>
                     <td>@s.Category</td>
                     <td>@s.Location.Facility &rarr; @s.Location.Zone &rarr; @s.Location.SubZone</td>
-                    <td>@s.Attachments.Count</td>
+                    <td>
+                        <span class="attachment-count">
+                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M7 3h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                            </svg>
+                            @s.Attachments.Count
+                        </span>
+                    </td>
                 </tr>
             }
         </tbody>
@@ -130,7 +177,9 @@ else
     private List<DeviceProfile>? _sensors;
     private DeviceProfile? _registeredProfile;
     private string? _errorMessage;
-    private string? _uploadMessage;
+    private string? _uploadError;
+    private string _uploadingFileName = "";
+    private readonly List<(string Name, long SizeBytes)> _uploadedFiles = new();
     private bool _submitting;
     private bool _uploading;
 
@@ -145,7 +194,8 @@ else
     {
         _errorMessage = null;
         _registeredProfile = null;
-        _uploadMessage = null;
+        _uploadError = null;
+        _uploadedFiles.Clear();
 
         if (string.IsNullOrWhiteSpace(_form.MacAddress) || string.IsNullOrWhiteSpace(_form.Facility) ||
             string.IsNullOrWhiteSpace(_form.Zone) || string.IsNullOrWhiteSpace(_form.SubZone) ||
@@ -176,7 +226,9 @@ else
         if (_registeredProfile is null) return;
 
         _uploading = true;
-        _uploadMessage = null;
+        _uploadError = null;
+        _uploadingFileName = e.File.Name;
+        StateHasChanged();
 
         const long maxSize = 10 * 1024 * 1024;
         try
@@ -186,16 +238,30 @@ else
             var (success, error) = await Api.UploadMediaAsync(
                 _registeredProfile.Id, stream, file.Name, file.ContentType);
 
-            _uploadMessage = success ? $"Attached '{file.Name}'." : (error ?? "Upload failed.");
-            if (success) await ReloadSensorsAsync();
+            if (success)
+            {
+                _uploadedFiles.Add((file.Name, file.Size));
+                await ReloadSensorsAsync();
+            }
+            else
+            {
+                _uploadError = error ?? "Upload failed.";
+            }
         }
         catch (Exception ex)
         {
-            _uploadMessage = $"Upload failed: {ex.Message}";
+            _uploadError = $"Upload failed: {ex.Message}";
         }
         finally
         {
             _uploading = false;
         }
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F1} MB";
     }
 }
