@@ -1,3 +1,5 @@
+using SmartX.Shared.Models;
+
 namespace SmartX.Shared.Dtos;
 
 /// <summary>
@@ -12,6 +14,7 @@ public sealed class TelemetrySnapshotDto
     public string DisplayName { get; set; } = string.Empty;
     public string Zone { get; set; } = string.Empty;
     public string Unit { get; set; } = string.Empty;
+    public SensorCategory Category { get; set; }
     public double LatestValue { get; set; }
     public double DeltaPercent { get; set; }
     public TelemetryStatus Status { get; set; }
@@ -19,3 +22,4 @@ public sealed class TelemetrySnapshotDto
     public DateTimeOffset LastUpdatedUtc { get; set; }
     public double SecondsSinceUpdate { get; set; }
 }
+

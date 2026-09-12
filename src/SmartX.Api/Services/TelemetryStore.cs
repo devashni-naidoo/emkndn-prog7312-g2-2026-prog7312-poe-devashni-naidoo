@@ -120,6 +120,7 @@ public sealed class TelemetryStore
             DisplayName = profile is not null ? $"{profile.Location.NodeId} · {profile.Category}" : sensorId,
             Zone = profile?.Location.Zone ?? "Unassigned",
             Unit = UnitFor(profile?.Category),
+            Category = profile?.Category ?? SensorCategory.Environmental,
             LatestValue = Math.Round(state.LastValue, 2),
             DeltaPercent = Math.Round(delta, 1),
             Status = status,
