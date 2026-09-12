@@ -68,9 +68,12 @@ else
             var statusClass = StatusClass(snap.Status);
             <div class="telemetry-card @statusClass">
                 <div class="telemetry-card-head">
-                    <div>
-                        <div class="telemetry-name">@snap.DisplayName</div>
-                        <div class="telemetry-zone">@snap.Zone</div>
+                    <div class="telemetry-name-group">
+                        <span class="telemetry-icon">@CategoryIcon(snap.Category)</span>
+                        <div>
+                            <div class="telemetry-name">@snap.DisplayName</div>
+                            <div class="telemetry-zone">@snap.Zone</div>
+                        </div>
                     </div>
                     <span class="telemetry-badge @statusClass">@snap.Status</span>
                 </div>
@@ -85,9 +88,18 @@ else
                 <svg class="telemetry-sparkline" viewBox="0 0 100 32" preserveAspectRatio="none">
                     @if (snap.Sparkline.Length > 1)
                     {
+                        var sparkColor = SparklineColor(snap.Status);
+                        var gradientId = $"grad-{snap.SensorId}";
+                        <defs>
+                            <linearGradient id="@gradientId" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stop-color="@sparkColor" stop-opacity="0.35" />
+                                <stop offset="100%" stop-color="@sparkColor" stop-opacity="0" />
+                            </linearGradient>
+                        </defs>
+                        <polygon points="@BuildSparklineFillPoints(snap.Sparkline)" fill="url(#@gradientId)" stroke="none" />
                         <polyline points="@BuildSparklinePoints(snap.Sparkline)"
                                   fill="none"
-                                  stroke="@SparklineColor(snap.Status)"
+                                  stroke="@sparkColor"
                                   stroke-width="2"
                                   stroke-linecap="round"
                                   stroke-linejoin="round" />
@@ -188,6 +200,22 @@ else
         _aggregateResult = result?.ToString() ?? "No readings yet for one of those sensors.";
     }
 
+    private static MarkupString CategoryIcon(SensorCategory category) => category switch
+    {
+        SensorCategory.Environmental => new MarkupString(
+            "<svg viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'>" +
+            "<path d='M12 3a2.5 2.5 0 0 0-2.5 2.5v7.6a4 4 0 1 0 5 0V5.5A2.5 2.5 0 0 0 12 3Z' stroke='currentColor' stroke-width='1.5'/>" +
+            "<circle cx='12' cy='17' r='1.6' fill='currentColor'/></svg>"),
+        SensorCategory.PowerConsumption => new MarkupString(
+            "<svg viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'>" +
+            "<path d='M13 2 4 14h6l-1 8 9-12h-6l1-8Z' stroke='currentColor' stroke-width='1.4' stroke-linejoin='round'/></svg>"),
+        SensorCategory.Actuator => new MarkupString(
+            "<svg viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'>" +
+            "<rect x='3' y='8' width='18' height='8' rx='4' stroke='currentColor' stroke-width='1.5'/>" +
+            "<circle cx='16' cy='12' r='2.4' fill='currentColor'/></svg>"),
+        _ => new MarkupString(string.Empty)
+    };
+
     private static string StatusClass(TelemetryStatus status) => status switch
     {
         TelemetryStatus.Normal => "status-normal",
@@ -230,6 +258,21 @@ else
             points.Add($"{x.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)},{y.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)}");
         }
         return string.Join(" ", points);
+    }
+
+    /// <summary>
+    /// Same normalisation as <see cref="BuildSparklinePoints"/>, but closes
+    /// the shape down to the baseline so it can be filled as a soft gradient
+    /// area beneath the line — purely a visual polish layer under the same
+    /// data the polyline already renders.
+    /// </summary>
+    private static string BuildSparklineFillPoints(double[] values, double width = 100, double height = 32)
+    {
+        string line = BuildSparklinePoints(values, width, height);
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        string bottomRight = $"{width.ToString("F1", inv)},{height.ToString("F1", inv)}";
+        string bottomLeft = $"0.0,{height.ToString("F1", inv)}";
+        return $"{line} {bottomRight} {bottomLeft}";
     }
 
     public async ValueTask DisposeAsync()
