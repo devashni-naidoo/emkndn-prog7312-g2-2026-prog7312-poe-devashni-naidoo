@@ -1,3 +1,4 @@
+using SmartX.Api.Hubs;
 using SmartX.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -18,8 +19,23 @@ builder.Services.AddControllers();
 //   app.UseSwaggerUI();
 
 builder.Services.AddSingleton<SensorRegistry>();
+builder.Services.AddSingleton<AlertCoordinator>();
 builder.Services.AddSingleton<TelemetryStore>();
 builder.Services.AddSingleton<SensorSimulator>();
+builder.Services.AddSingleton<DeviceStateService>();
+builder.Services.AddSingleton<PredictiveInsightService>();
+
+// CommandProcessorWorker is both an injectable singleton (controllers call
+// Enqueue/UndoLast/RecentHistory directly) and the hosted background service
+// that continuously drains the standard + critical queues — the same
+// instance plays both roles, which is why it's registered this way rather
+// than with plain AddHostedService<T>().
+builder.Services.AddSingleton<CommandProcessorWorker>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<CommandProcessorWorker>());
+
+// SignalR is part of the ASP.NET Core shared framework — no extra NuGet
+// package needed, unlike the SignalR *client* on a non-Blazor-Server app.
+builder.Services.AddSignalR();
 
 // The Blazor client runs on a different origin/port, so it needs an explicit
 // CORS policy to call this API from the browser.
@@ -71,6 +87,7 @@ app.Use(async (context, next) =>
 });
 
 app.MapControllers();
+app.MapHub<CommandHub>("/hubs/commands");
 
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", utc = DateTimeOffset.UtcNow }));
 
