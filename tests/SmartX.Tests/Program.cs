@@ -13,6 +13,8 @@ Console.WriteLine();
 ZoneLoadMatrixTests.Run();
 Console.WriteLine();
 DeploymentValidatorTests.Run();
+Console.WriteLine();
+Part2DataStructureTests.Run();
 
 Console.WriteLine();
 Console.WriteLine($"---- {Check.Passed} passed, {Check.Failed} failed ----");
