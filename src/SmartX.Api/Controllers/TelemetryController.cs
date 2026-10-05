@@ -20,14 +20,14 @@ public sealed class TelemetryController : ControllerBase
 
     /// <summary>Ingests a single reading and returns the recomputed snapshot.</summary>
     [HttpPost]
-    public ActionResult<TelemetrySnapshotDto> Ingest([FromBody] IngestReadingRequest request)
+    public async Task<ActionResult<TelemetrySnapshotDto>> Ingest([FromBody] IngestReadingRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.SensorId))
         {
             return BadRequest(new { error = "SensorId is required." });
         }
 
-        var snapshot = _store.Ingest(request.SensorId, request.Value);
+        var snapshot = await _store.IngestAsync(request.SensorId, request.Value);
         return Ok(snapshot);
     }
 
@@ -36,7 +36,7 @@ public sealed class TelemetryController : ControllerBase
     /// <see cref="TelemetryHistoryBuffer{T}"/> directly.
     /// </summary>
     [HttpPost("batch")]
-    public ActionResult<object> IngestBatch([FromBody] IngestBatchRequest request)
+    public async Task<ActionResult<object>> IngestBatch([FromBody] IngestBatchRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.SensorId))
         {
@@ -45,16 +45,17 @@ public sealed class TelemetryController : ControllerBase
 
         int count = _store.IngestBatch(request.SensorId, request.Values);
         _logger.LogInformation("Ingested batch of {Count} readings for {SensorId}", count, request.SensorId);
-        return Ok(new { ingested = count, snapshot = _store.GetSnapshot(request.SensorId) });
+        var snapshot = await _store.GetSnapshotAsync(request.SensorId);
+        return Ok(new { ingested = count, snapshot });
     }
 
     [HttpGet]
-    public ActionResult<IReadOnlyList<TelemetrySnapshotDto>> GetAll() => Ok(_store.GetAllSnapshots());
+    public async Task<ActionResult<IReadOnlyList<TelemetrySnapshotDto>>> GetAll() => Ok(await _store.GetAllSnapshotsAsync());
 
     [HttpGet("{sensorId}")]
-    public ActionResult<TelemetrySnapshotDto> GetOne(string sensorId)
+    public async Task<ActionResult<TelemetrySnapshotDto>> GetOne(string sensorId)
     {
-        var snapshot = _store.GetSnapshot(sensorId);
+        var snapshot = await _store.GetSnapshotAsync(sensorId);
         return snapshot is null ? NotFound() : Ok(snapshot);
     }
 
@@ -71,10 +72,10 @@ public sealed class TelemetryController : ControllerBase
     /// <see cref="PowerMeterReading"/>: Meter3 = Meter1 + Meter2.
     /// </summary>
     [HttpPost("aggregate")]
-    public ActionResult<object> AggregateMeters([FromBody] AggregateMetersRequest request)
+    public async Task<ActionResult<object>> AggregateMeters([FromBody] AggregateMetersRequest request)
     {
-        var a = _store.GetSnapshot(request.MeterIdA);
-        var b = _store.GetSnapshot(request.MeterIdB);
+        var a = await _store.GetSnapshotAsync(request.MeterIdA);
+        var b = await _store.GetSnapshotAsync(request.MeterIdB);
         if (a is null || b is null)
         {
             return NotFound(new { error = "Both meter IDs must have at least one ingested reading." });

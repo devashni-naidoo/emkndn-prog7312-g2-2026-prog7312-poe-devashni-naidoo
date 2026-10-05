@@ -71,7 +71,7 @@ public sealed class SensorSimulator
                     ? baseline * (1 + _random.NextDouble() * 1.5 + 0.8)
                     : baseline + (_random.NextDouble() - 0.5) * baseline * 0.06;
 
-                _store.Ingest(sensorId, Math.Round(value, 2));
+                await _store.IngestAsync(sensorId, Math.Round(value, 2));
 
                 await Task.Delay(TimeSpan.FromSeconds(2), token);
             }
