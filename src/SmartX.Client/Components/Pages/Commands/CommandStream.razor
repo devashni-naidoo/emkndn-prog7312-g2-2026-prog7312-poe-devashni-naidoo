@@ -1,0 +1,384 @@
+@page "/commands"
+@rendermode InteractiveServer
+@using SmartX.Shared.Commands
+@using SmartX.Shared.Dtos
+@using SmartX.Shared.Models
+@using SmartX.Client.Services
+@inject SmartXApiClient Api
+@inject IJSRuntime JS
+@inject IConfiguration Config
+@implements IAsyncDisposable
+
+<PageTitle>Smart-X · Command Stream</PageTitle>
+
+<div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
+    <div>
+        <h1>Real-Time Command Stream &amp; History</h1>
+        <p>
+            Search devices, issue manual overrides, and watch results arrive
+            live over SignalR — no polling on this page.
+        </p>
+    </div>
+    <div style="display:flex; gap:8px; align-items:center;">
+        <span class="conn-badge @(_connected ? "online" : "offline")">
+            <span class="pip"></span> @(_connected ? "Live" : "Reconnecting...")
+        </span>
+        <span class="queue-chip">Standard: @_queueStandard</span>
+        <span class="queue-chip critical">Critical: @_queueCritical</span>
+    </div>
+</div>
+
+<div class="toolbar panel">
+    <input type="text" placeholder="Search node, MAC, or zone..." @bind="_searchQuery" @bind:event="oninput" @onkeyup="HandleSearchKeyUp" style="min-width:220px;" />
+    <select @bind="_categoryFilter">
+        <option value="">All categories</option>
+        <option value="@SensorCategory.Environmental">Environmental</option>
+        <option value="@SensorCategory.PowerConsumption">Power Consumption</option>
+        <option value="@SensorCategory.Actuator">Actuator</option>
+    </select>
+    <select @bind="_alertFilter">
+        <option value="">Any alert state</option>
+        <option value="true">Active alert only</option>
+        <option value="false">No active alert</option>
+    </select>
+    <button class="btn btn-sm btn-primary" @onclick="SearchAsync">Search</button>
+    <span style="flex:1;"></span>
+    <button class="btn btn-sm" @onclick="UndoAsync">↶ Undo last command</button>
+    @if (!string.IsNullOrEmpty(_undoMessage))
+    {
+        <span class="field-hint">@_undoMessage</span>
+    }
+</div>
+
+<div class="command-layout">
+    <div>
+        <h2>Devices</h2>
+        @if (_devices is null)
+        {
+            <p class="field-hint">Loading...</p>
+        }
+        else if (_devices.Count == 0)
+        {
+            <div class="empty-state">No devices match this search. Try clearing the filters, or register a sensor first.</div>
+        }
+        else
+        {
+            <div class="device-grid">
+                @foreach (var d in _devices)
+                {
+                    <div class="device-card @(d.HasActiveAlert ? "has-alert" : "")">
+                        <div class="device-card-head">
+                            <div>
+                                <div class="telemetry-name">@d.NodeId</div>
+                                <div class="telemetry-zone">@d.Zone · @d.Category</div>
+                            </div>
+                            <span class="telemetry-badge @StatusClass(d.TelemetryStatus)">@d.TelemetryStatus</span>
+                        </div>
+
+                        @if (d.HasActiveAlert)
+                        {
+                            <div class="field-hint" style="color:var(--status-anomalous);">
+                                ⚠ @string.Join(", ", d.ActiveAlertKeys.Select(k => k[(k.IndexOf(':') + 1)..]))
+                            </div>
+                        }
+
+                        <div class="device-card-actions">
+                            @if (d.Category == SensorCategory.Actuator)
+                            {
+                                <button class="btn btn-sm" @onclick="() => Issue(d.SensorId, CommandType.ToggleRelay)">Toggle Relay</button>
+                                <button class="btn btn-sm" @onclick="() => Issue(d.SensorId, CommandType.TriggerPump)">Trigger Pump</button>
+                                <button class="btn btn-sm" @onclick="() => Issue(d.SensorId, CommandType.StopPump)">Stop Pump</button>
+                                <button class="btn btn-sm" @onclick="() => Issue(d.SensorId, CommandType.OpenValve)">Open Valve</button>
+                                <button class="btn btn-sm" @onclick="() => Issue(d.SensorId, CommandType.ShutValve)">Shut Valve</button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-sm" @onclick="() => Issue(d.SensorId, CommandType.ResetSensor)">Reset Sensor</button>
+                            }
+                        </div>
+                        <label class="severity-toggle">
+                            <input type="checkbox" @bind="_criticalBySensor[d.SensorId]" />
+                            Send as Critical (jumps the queue)
+                        </label>
+
+                        <button class="btn btn-sm" style="align-self:flex-start;" @onclick="() => ToggleTimeline(d.SensorId)">
+                            @(_expandedTimelineSensorId == d.SensorId ? "Hide" : "View") timeline
+                        </button>
+
+                        @if (_expandedTimelineSensorId == d.SensorId)
+                        {
+                            <div class="timeline-list">
+                                @if (_timelineEntries is null)
+                                {
+                                    <span class="field-hint">Loading timeline...</span>
+                                }
+                                else if (_timelineEntries.Count == 0)
+                                {
+                                    <span class="field-hint">No history yet for this device.</span>
+                                }
+                                else
+                                {
+                                    @foreach (var e in _timelineEntries)
+                                    {
+                                        <div class="timeline-entry">
+                                            <span class="timeline-time">@e.TimestampUtc.ToLocalTime().ToString("HH:mm:ss")</span>
+                                            <span class="timeline-msg">@e.Message</span>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+    <div>
+        <h2>Suggested Actions</h2>
+        <div class="panel" style="margin-bottom:16px;">
+            @if (_suggestions is null)
+            {
+                <span class="field-hint">Loading...</span>
+            }
+            else if (_suggestions.Count == 0)
+            {
+                <span class="field-hint">No active alerts right now — nothing to suggest.</span>
+            }
+            else
+            {
+                @foreach (var s in _suggestions)
+                {
+                    <div class="suggestion-card">
+                        <span class="suggestion-title">@s.DisplayName — @s.AlertType</span>
+                        <span class="suggestion-rationale">@s.Rationale</span>
+                        <button class="btn btn-sm btn-primary" style="align-self:flex-start;"
+                                @onclick="() => Issue(s.SensorId, s.SuggestedCommand)">
+                            Apply: @s.SuggestedCommand
+                        </button>
+                    </div>
+                }
+            }
+        </div>
+
+        <h2>Live Feed</h2>
+        <div class="panel feed-panel">
+            @if (_feed.Count == 0)
+            {
+                <span class="field-hint">Nothing yet — issue a command or wait for an alert.</span>
+            }
+            @foreach (var item in _feed)
+            {
+                <div class="feed-item @item.CssClass">
+                    <span class="feed-item-title">@item.Title</span>
+                    <span class="feed-item-meta">@item.TimestampLocal.ToString("HH:mm:ss") — @item.Detail</span>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<DeviceSearchResultDto>? _devices;
+    private List<SuggestedActionDto>? _suggestions;
+    private List<LogEntryDto>? _timelineEntries;
+    private string? _expandedTimelineSensorId;
+
+    private string _searchQuery = "";
+    private string _categoryFilter = "";
+    private string _alertFilter = "";
+    private string? _undoMessage;
+
+    private readonly Dictionary<string, bool> _criticalBySensor = new();
+    private readonly List<FeedItem> _feed = new();
+
+    private bool _connected;
+    private int _queueStandard;
+    private int _queueCritical;
+
+    private DotNetObjectReference<CommandStream>? _dotNetRef;
+    private PeriodicTimer? _pollTimer;
+    private CancellationTokenSource? _cts;
+
+    private sealed class FeedItem
+    {
+        public string Title { get; set; } = "";
+        public string Detail { get; set; } = "";
+        public DateTimeOffset TimestampLocal { get; set; } = DateTimeOffset.Now;
+        public string CssClass { get; set; } = "command";
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await SearchAsync();
+        await RefreshSuggestionsAsync();
+        await RefreshQueueDepthAsync();
+    }
+
+    /// <summary>
+    /// JS interop (starting the SignalR connection) can only happen once the
+    /// component has actually rendered — calling it from
+    /// <see cref="OnInitializedAsync"/> throws during Blazor's static
+    /// prerendering pass, which doesn't have a live JS runtime yet.
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        _dotNetRef = DotNetObjectReference.Create(this);
+        string apiBase = (Config["ApiBaseUrl"] ?? "http://localhost:5080").TrimEnd('/');
+        string hubUrl = $"{apiBase}/hubs/commands";
+        await JS.InvokeVoidAsync("smartXCommandHub.start", _dotNetRef, hubUrl);
+
+        // Queue depth isn't pushed over the hub (it's a cheap poll, not worth
+        // its own event type), so a light periodic refresh covers it plus
+        // acts as a safety net if a hub event is ever missed.
+        _cts = new CancellationTokenSource();
+        _pollTimer = new PeriodicTimer(TimeSpan.FromSeconds(3));
+        _ = PollLoopAsync(_cts.Token);
+    }
+
+    private async Task PollLoopAsync(CancellationToken token)
+    {
+        try
+        {
+            while (await _pollTimer!.WaitForNextTickAsync(token))
+            {
+                await RefreshQueueDepthAsync();
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private async Task SearchAsync()
+    {
+        SensorCategory? category = string.IsNullOrEmpty(_categoryFilter) ? null : Enum.Parse<SensorCategory>(_categoryFilter);
+        bool? alert = string.IsNullOrEmpty(_alertFilter) ? null : bool.Parse(_alertFilter);
+        _devices = await Api.SearchDevicesAsync(_searchQuery, category, alert);
+        StateHasChanged();
+    }
+
+    private async Task HandleSearchKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await SearchAsync();
+    }
+
+    private async Task RefreshSuggestionsAsync()
+    {
+        _suggestions = await Api.GetSuggestionsAsync();
+    }
+
+    private async Task RefreshQueueDepthAsync()
+    {
+        var (standard, critical) = await Api.GetQueueDepthAsync();
+        _queueStandard = standard;
+        _queueCritical = critical;
+    }
+
+    private async Task Issue(string sensorId, CommandType type)
+    {
+        bool critical = _criticalBySensor.GetValueOrDefault(sensorId, false);
+        var request = new IssueCommandRequest
+        {
+            SensorId = sensorId,
+            Type = type,
+            Severity = critical ? CommandSeverity.Critical : CommandSeverity.Standard
+        };
+        await Api.IssueCommandAsync(request);
+        await RefreshQueueDepthAsync();
+    }
+
+    private async Task UndoAsync()
+    {
+        var (success, error) = await Api.UndoLastCommandAsync();
+        _undoMessage = success ? "Last command reverted." : (error ?? "Nothing to undo.");
+        await RefreshQueueDepthAsync();
+    }
+
+    private async Task ToggleTimeline(string sensorId)
+    {
+        if (_expandedTimelineSensorId == sensorId)
+        {
+            _expandedTimelineSensorId = null;
+            _timelineEntries = null;
+            return;
+        }
+
+        _expandedTimelineSensorId = sensorId;
+        _timelineEntries = null;
+        StateHasChanged();
+        _timelineEntries = await Api.GetTimelineAsync(sensorId);
+    }
+
+    private static string StatusClass(TelemetryStatus status) => status switch
+    {
+        TelemetryStatus.Normal => "status-normal",
+        TelemetryStatus.Warning => "status-warning",
+        TelemetryStatus.Anomalous => "status-anomalous",
+        TelemetryStatus.Disconnected => "status-disconnected",
+        _ => "status-normal"
+    };
+
+    // ------------------------- SignalR callbacks (JS -> .NET) -------------------------
+
+    [JSInvokable]
+    public async Task OnCommandResult(CommandResult result)
+    {
+        _feed.Insert(0, new FeedItem
+        {
+            Title = $"{result.Type} — {(result.Success ? "OK" : "Failed")}",
+            Detail = result.Message + (result.WasCritical ? " (critical)" : ""),
+            CssClass = "command"
+        });
+        TrimFeed();
+        await RefreshSuggestionsAsync();
+        await RefreshQueueDepthAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task OnAlert(AlertEvent alert)
+    {
+        _feed.Insert(0, new FeedItem
+        {
+            Title = $"{alert.AlertType} {(alert.Active ? "raised" : "cleared")}",
+            Detail = alert.DisplayName,
+            CssClass = alert.Active ? "alert-raised" : "alert-cleared"
+        });
+        TrimFeed();
+        await RefreshSuggestionsAsync();
+        await SearchAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public void OnConnectionStateChanged(bool connected)
+    {
+        _connected = connected;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void TrimFeed()
+    {
+        while (_feed.Count > 40) _feed.RemoveAt(_feed.Count - 1);
+    }
+
+    public sealed class AlertEvent
+    {
+        public string SensorId { get; set; } = "";
+        public string DisplayName { get; set; } = "";
+        public string AlertType { get; set; } = "";
+        public bool Active { get; set; }
+        public DateTimeOffset AtUtc { get; set; }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _cts?.Cancel();
+        _pollTimer?.Dispose();
+        _cts?.Dispose();
+        try { await JS.InvokeVoidAsync("smartXCommandHub.stop"); } catch { /* circuit may already be gone */ }
+        _dotNetRef?.Dispose();
+    }
+}
