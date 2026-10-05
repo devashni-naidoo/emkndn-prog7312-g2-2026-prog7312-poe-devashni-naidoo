@@ -1,11 +1,19 @@
-# Smart-X — Part 1: Data Ingestion & Validation Gateway
+# Smart-X — Parts 1 & 2: Ingestion Gateway + Real-Time Command Stream
 
-PROG7312 POE, Part 1. A .NET 8 solution implementing the Smart-X sensor
-ingestion API and a Blazor client-facing configuration dashboard, built
-around the four required C# language features (generics, operator
-overloading, advanced arrays/lists, recursion) plus the dashboard engagement
-strategy selected in the Task 1 research report (real-time visual telemetry
-feedback with threshold-based anomaly highlighting).
+PROG7312 POE. A .NET 8 solution implementing:
+
+- **Part 1**: the Smart-X sensor ingestion API and a Blazor client-facing
+  configuration dashboard, built around four required C# language features
+  (generics, operator overloading, advanced arrays/lists, recursion) plus the
+  dashboard engagement strategy selected in the Task 1 research report
+  (real-time visual telemetry feedback with threshold-based anomaly
+  highlighting).
+- **Part 2**: a Real-Time Command Stream & History page backed by SignalR,
+  built around five more required data structures (`Queue<T>`,
+  `PriorityQueue<T,TPriority>`, `Stack<T>`, `Dictionary<TKey,TValue>`,
+  `SortedDictionary<TKey,TValue>`, `HashSet<T>`), plus an Automated Action
+  Engine that learns from historical alert/command patterns and suggests
+  responses.
 
 ## Solution layout
 
@@ -126,6 +134,8 @@ attachments persist in the `smartx-api-data` named volume.
 
 ## Where each technical requirement lives
 
+### Part 1
+
 | Requirement | File |
 |---|---|
 | Generic wrapper `TelemetryPacket<T>` | `src/SmartX.Shared/Telemetry/TelemetryPacket.cs` |
@@ -140,15 +150,59 @@ attachments persist in the `smartx-api-data` named volume.
 | Dashboard engagement strategy (sparklines, delta, colour coding) | `src/SmartX.Client/Components/Pages/Telemetry/Dashboard.razor` |
 | Three-pillar startup interface | `src/SmartX.Client/Components/Pages/Home.razor` |
 
+### Part 2
+
+| Requirement | File |
+|---|---|
+| Message Queue (`Queue<T>`, FIFO) | `src/SmartX.Shared/DataStructures/CommandQueue.cs` |
+| Priority Queue (`PriorityQueue<T,long>`, critical bypass) | `src/SmartX.Shared/DataStructures/CriticalAlertQueue.cs` |
+| Stack (`Stack<T>`, Undo) | `src/SmartX.Shared/DataStructures/CommandHistoryStack.cs` |
+| Dictionary (`Dictionary<string,DeviceProfile>`, O(1) MAC lookup) | `src/SmartX.Shared/DataStructures/DeviceIndex.cs` |
+| Sorted Dictionary (`SortedDictionary`, timestamp-ordered timeline) | `src/SmartX.Shared/DataStructures/SensorLogTimeline.cs` |
+| Hash Set (`HashSet<string>`, alert deduplication) | `src/SmartX.Shared/DataStructures/ActiveAlertSet.cs` |
+| Automated Action Engine (pattern frequency analysis) | `src/SmartX.Shared/DataStructures/PatternFrequencyTracker.cs`, `src/SmartX.Api/Services/PredictiveInsightService.cs` |
+| Background command processor (drains both queues) | `src/SmartX.Api/Services/CommandProcessorWorker.cs` |
+| SignalR hub (live push to dashboard) | `src/SmartX.Api/Hubs/CommandHub.cs` |
+| Search/filter by category + alert state | `src/SmartX.Api/Controllers/SensorsController.cs` (`Search`) |
+| Real-Time Command Stream page (UI) | `src/SmartX.Client/Components/Pages/Commands/CommandStream.razor` |
+| SignalR JS interop (vendored, no NuGet needed) | `src/SmartX.Client/wwwroot/js/commandHub.js`, `signalr.min.js` |
+
+## Using the Part 2 Command Stream
+
+1. Go to **Command Stream** in the sidebar (or Pillar 2 on the Overview page).
+2. Search/filter devices by free text (node/MAC/zone), category, or active
+   alert state.
+3. Issue a manual override (Toggle Relay, Trigger/Stop Pump, Open/Shut Valve
+   for Actuator-category devices; Reset Sensor for others). Tick **Send as
+   Critical** to route it through the priority queue instead of the standard
+   FIFO queue — critical commands are always drained first by the background
+   `CommandProcessorWorker`.
+4. Watch the **Live Feed** panel update in real time via SignalR as commands
+   execute and alerts raise/clear — this isn't polling, it's a genuine push
+   from `CommandHub` on the API straight to the browser.
+5. Click **Undo last command** to pop the command history stack and
+   automatically re-issue its inverse (e.g. undoing a Shut Valve re-opens it).
+6. Go to the **Telemetry Dashboard** and start a sensor's simulation so it
+   spikes into an Anomalous state, then issue the same command against it a
+   couple of times — the **Suggested Actions** panel on the Command Stream
+   page will start recommending that command for similar future alerts, with
+   an occurrence count and a one-click **Apply** button.
+7. Click **View timeline** on any device card to see its
+   `SortedDictionary`-backed, timestamp-ordered history.
+
 ## Verifying it works
 
 Since no NuGet-based test framework could be restored in the sandbox this was
 built in, `tests/SmartX.Tests` is a small console project with a hand-rolled
 assertion helper (`Check.cs`) that exercises the real production code in
-`SmartX.Shared` — 32 checks covering generics, operator overloading, jagged
+`SmartX.Shared` — 65 checks covering generics, operator overloading, jagged
 arrays (including ring-buffer eviction), the multi-dimensional load matrix,
-and recursive validation (valid trees, missing tiers, wrong nesting order,
-incomplete branches, and multi-branch trees).
+recursive validation (valid trees, missing tiers, wrong nesting order,
+incomplete branches, and multi-branch trees), and all five Part 2 data
+structures including deterministic proof that the priority queue really does
+dequeue by issue-time regardless of enqueue order (something a live timing-based
+demo can't reliably show, since the background worker drains so fast there's
+rarely a real backlog to observe).
 
 ```bash
 dotnet run --project tests/SmartX.Tests
@@ -156,7 +210,7 @@ dotnet run --project tests/SmartX.Tests
 
 Expected output ends with:
 ```
----- 32 passed, 0 failed ----
+---- 65 passed, 0 failed ----
 ```
 
 Manual API testing without the client: use `src/SmartX.Api/SmartX.Api.http`
