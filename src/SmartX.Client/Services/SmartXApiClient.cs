@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using SmartX.Shared.Commands;
 using SmartX.Shared.Dtos;
 using SmartX.Shared.Models;
 
@@ -80,6 +81,60 @@ public sealed class SmartXApiClient
             new AggregateMetersRequest { MeterIdA = meterIdA, MeterIdB = meterIdB }, ct);
         if (!response.IsSuccessStatusCode) return null;
         return await response.Content.ReadFromJsonAsync<object>(cancellationToken: ct);
+    }
+
+    // --------------------------- Part 2: command stream ---------------------------
+
+    public async Task<(bool Success, string? Error)> IssueCommandAsync(IssueCommandRequest request, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsJsonAsync("api/commands", request, ct);
+        if (response.IsSuccessStatusCode) return (true, null);
+        return (false, await TryReadErrorAsync(response, ct));
+    }
+
+    public async Task<(bool Success, string? Error)> UndoLastCommandAsync(CancellationToken ct = default)
+    {
+        var response = await _http.PostAsync("api/commands/undo", content: null, ct);
+        if (response.IsSuccessStatusCode) return (true, null);
+        return (false, await TryReadErrorAsync(response, ct));
+    }
+
+    public async Task<List<DeviceCommand>> GetCommandHistoryAsync(int take = 20, CancellationToken ct = default)
+    {
+        var result = await _http.GetFromJsonAsync<List<DeviceCommand>>($"api/commands/history?take={take}", ct);
+        return result ?? new List<DeviceCommand>();
+    }
+
+    public async Task<List<LogEntryDto>> GetTimelineAsync(string sensorId, CancellationToken ct = default)
+    {
+        var result = await _http.GetFromJsonAsync<List<LogEntryDto>>($"api/commands/timeline/{sensorId}", ct);
+        return result ?? new List<LogEntryDto>();
+    }
+
+    public async Task<(int Standard, int Critical)> GetQueueDepthAsync(CancellationToken ct = default)
+    {
+        var result = await _http.GetFromJsonAsync<Dictionary<string, int>>("api/commands/queue-depth", ct);
+        if (result is null) return (0, 0);
+        return (result.GetValueOrDefault("standard"), result.GetValueOrDefault("critical"));
+    }
+
+    public async Task<List<DeviceSearchResultDto>> SearchDevicesAsync(
+        string? query, SensorCategory? category, bool? hasActiveAlert, CancellationToken ct = default)
+    {
+        var qs = new List<string>();
+        if (!string.IsNullOrWhiteSpace(query)) qs.Add($"q={Uri.EscapeDataString(query)}");
+        if (category is not null) qs.Add($"category={category}");
+        if (hasActiveAlert is not null) qs.Add($"hasActiveAlert={hasActiveAlert.Value}");
+        string url = "api/sensors/search" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
+
+        var result = await _http.GetFromJsonAsync<List<DeviceSearchResultDto>>(url, ct);
+        return result ?? new List<DeviceSearchResultDto>();
+    }
+
+    public async Task<List<SuggestedActionDto>> GetSuggestionsAsync(CancellationToken ct = default)
+    {
+        var result = await _http.GetFromJsonAsync<List<SuggestedActionDto>>("api/insights/suggestions", ct);
+        return result ?? new List<SuggestedActionDto>();
     }
 
     private static async Task<string?> TryReadErrorAsync(HttpResponseMessage response, CancellationToken ct)
