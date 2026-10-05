@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
+using SmartX.Shared.DataStructures;
 using SmartX.Shared.Models;
 using SmartX.Shared.Validation;
 
@@ -18,9 +19,26 @@ public sealed class SensorRegistry
 
     private readonly ConcurrentDictionary<string, DeviceProfile> _sensors = new();
 
+    // O(1) MAC -> device lookup (Part 2 technical requirement), kept in sync
+    // with _sensors by Register()/AddAttachment() below. Access is guarded
+    // by a lock since DeviceIndex's backing Dictionary<TKey,TValue> is not
+    // itself thread-safe, unlike the ConcurrentDictionary used for the
+    // primary store.
+    private readonly DeviceIndex _macIndex = new();
+    private readonly object _indexLock = new();
+
     public IReadOnlyCollection<DeviceProfile> GetAll() => _sensors.Values.ToList();
 
     public DeviceProfile? Get(string id) => _sensors.TryGetValue(id, out var profile) ? profile : null;
+
+    /// <summary>O(1) lookup by MAC address, used when a telemetry packet or command arrives.</summary>
+    public DeviceProfile? FindByMac(string macAddress)
+    {
+        lock (_indexLock)
+        {
+            return _macIndex.FindByMac(macAddress);
+        }
+    }
 
     /// <summary>
     /// Validates the deployment hierarchy recursively (via
@@ -53,28 +71,31 @@ public sealed class SensorRegistry
             return (false, "MAC address must be in the form AA:BB:CC:DD:EE:FF.", null);
         }
 
-        if (_sensors.Values.Any(existing =>
-                string.Equals(existing.MacAddress, macAddress, StringComparison.OrdinalIgnoreCase)))
+        lock (_indexLock)
         {
-            return (false, $"A sensor with MAC address '{macAddress}' is already registered.", null);
-        }
-
-        var profile = new DeviceProfile
-        {
-            MacAddress = macAddress,
-            Category = category,
-            Location = new DeploymentLocation
+            if (_macIndex.Contains(macAddress))
             {
-                Facility = facility,
-                Zone = zone,
-                SubZone = subZone,
-                Room = room,
-                NodeId = nodeId
+                return (false, $"A sensor with MAC address '{macAddress}' is already registered.", null);
             }
-        };
 
-        _sensors[profile.Id] = profile;
-        return (true, validation.Message, profile);
+            var profile = new DeviceProfile
+            {
+                MacAddress = macAddress,
+                Category = category,
+                Location = new DeploymentLocation
+                {
+                    Facility = facility,
+                    Zone = zone,
+                    SubZone = subZone,
+                    Room = room,
+                    NodeId = nodeId
+                }
+            };
+
+            _sensors[profile.Id] = profile;
+            _macIndex.Put(profile);
+            return (true, validation.Message, profile);
+        }
     }
 
     public bool AddAttachment(string sensorId, MediaAttachment attachment)
