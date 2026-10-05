@@ -11,6 +11,8 @@ public sealed class SensorsController : ControllerBase
 {
     private readonly SensorRegistry _registry;
     private readonly SensorSimulator _simulator;
+    private readonly TelemetryStore _telemetry;
+    private readonly AlertCoordinator _alerts;
     private readonly IWebHostEnvironment _env;
     private readonly ILogger<SensorsController> _logger;
 
@@ -20,11 +22,15 @@ public sealed class SensorsController : ControllerBase
     public SensorsController(
         SensorRegistry registry,
         SensorSimulator simulator,
+        TelemetryStore telemetry,
+        AlertCoordinator alerts,
         IWebHostEnvironment env,
         ILogger<SensorsController> logger)
     {
         _registry = registry;
         _simulator = simulator;
+        _telemetry = telemetry;
+        _alerts = alerts;
         _env = env;
         _logger = logger;
     }
@@ -134,5 +140,55 @@ public sealed class SensorsController : ControllerBase
     {
         var profile = _registry.Get(id);
         return profile is null ? NotFound() : Ok(profile.Attachments);
+    }
+
+    /// <summary>
+    /// Finds specific devices by free-text node/MAC match, category, and/or
+    /// current alert state — the search/filter requirement for the Command
+    /// Stream page. Every non-empty query term is also fed into the
+    /// predictive engine's search-frequency tracker.
+    /// </summary>
+    [HttpGet("search")]
+    public async Task<ActionResult<IReadOnlyList<DeviceSearchResultDto>>> Search(
+        [FromQuery] string? q, [FromQuery] SensorCategory? category, [FromQuery] bool? hasActiveAlert)
+    {
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            _alerts.RecordSearch(q.Trim());
+        }
+
+        var results = new List<DeviceSearchResultDto>();
+        foreach (var profile in _registry.GetAll())
+        {
+            if (category is not null && profile.Category != category) continue;
+
+            bool textMatches = string.IsNullOrWhiteSpace(q) ||
+                profile.Location.NodeId.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                profile.MacAddress.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                profile.Location.Zone.Contains(q, StringComparison.OrdinalIgnoreCase);
+            if (!textMatches) continue;
+
+            var snapshot = await _telemetry.GetSnapshotAsync(profile.Id);
+            var activeKeys = _alerts.ActiveAlerts.Snapshot()
+                .Where(k => k.StartsWith(profile.Id + ":", StringComparison.Ordinal))
+                .ToList();
+
+            bool anyActiveAlert = activeKeys.Count > 0;
+            if (hasActiveAlert is not null && hasActiveAlert.Value != anyActiveAlert) continue;
+
+            results.Add(new DeviceSearchResultDto
+            {
+                SensorId = profile.Id,
+                MacAddress = profile.MacAddress,
+                NodeId = profile.Location.NodeId,
+                Zone = profile.Location.Zone,
+                Category = profile.Category,
+                TelemetryStatus = snapshot?.Status ?? SmartX.Shared.Dtos.TelemetryStatus.Normal,
+                HasActiveAlert = anyActiveAlert,
+                ActiveAlertKeys = activeKeys
+            });
+        }
+
+        return Ok(results);
     }
 }
