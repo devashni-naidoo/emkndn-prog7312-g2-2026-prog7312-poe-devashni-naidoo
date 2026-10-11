@@ -97,7 +97,7 @@
                             }
                         </div>
                         <label class="severity-toggle">
-                            <input type="checkbox" @bind="_criticalBySensor[d.SensorId]" />
+                            <input type="checkbox" checked="@_criticalSensors.Contains(d.SensorId)" @onchange="e => SetCritical(d.SensorId, (bool)(e.Value ?? false))" />
                             Send as Critical (jumps the queue)
                         </label>
 
@@ -189,7 +189,7 @@
     private string _alertFilter = "";
     private string? _undoMessage;
 
-    private readonly Dictionary<string, bool> _criticalBySensor = new();
+    private readonly HashSet<string> _criticalSensors = new();
     private readonly List<FeedItem> _feed = new();
 
     private bool _connected;
@@ -276,9 +276,15 @@
         _queueCritical = critical;
     }
 
+    private void SetCritical(string sensorId, bool isCritical)
+    {
+        if (isCritical) _criticalSensors.Add(sensorId);
+        else _criticalSensors.Remove(sensorId);
+    }
+
     private async Task Issue(string sensorId, CommandType type)
     {
-        bool critical = _criticalBySensor.GetValueOrDefault(sensorId, false);
+        bool critical = _criticalSensors.Contains(sensorId);
         var request = new IssueCommandRequest
         {
             SensorId = sensorId,
