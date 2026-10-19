@@ -244,11 +244,8 @@ Install the following before running the solution:
 ### 1. Clone the repository
 
 ```bash
-git clone <your-repository-url>
-cd <repository-folder>
+git clone [<repo>](https://github.com/devashni-naidoo/emkndn-prog7312-g2-2026-prog7312-poe-devashni-naidoo)
 ```
-
-Replace the placeholders with the actual GitHub repository URL and folder name.
 
 ### 2. Restore and build
 
