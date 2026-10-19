@@ -1,5 +1,6 @@
 @page "/telemetry"
 @rendermode InteractiveServer
+@using System.Globalization
 @using SmartX.Shared.Dtos
 @using SmartX.Shared.Models
 @using SmartX.Client.Services
@@ -8,14 +9,23 @@
 
 <PageTitle>Smart-X · Telemetry Dashboard</PageTitle>
 
-<div class="page-header">
-    <h1>Telemetry Dashboard</h1>
-    <p>
-        Real-time visual feedback — trend sparklines, delta indicators and
-        threshold-based colour coding — the engagement strategy selected in
-        the Task 1 research report. Refreshes every 2 seconds.
-    </p>
+<div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
+    <div>
+        <h1>Telemetry Dashboard</h1>
+        <p>
+            Real-time visual feedback: trend sparklines, delta indicators and threshold colour coding,
+            sorted so the sensors that need attention come first.
+        </p>
+    </div>
+    <span class="live-pill @(_apiOnline ? "" : "offline")">@(_apiOnline ? "Live · every 2s" : "API offline")</span>
 </div>
+
+@if (!_apiOnline)
+{
+    <div class="banner banner-error" style="margin-bottom:16px;">
+        Can't reach the Smart-X API. Start <strong>SmartX.Api</strong> and this page will reconnect on its own.
+    </div>
+}
 
 @if (_sensors is null)
 {
@@ -23,13 +33,57 @@
 }
 else if (_sensors.Count == 0)
 {
-    <div class="empty-state">
-        No sensors registered yet. <a href="sensors/register">Register one</a> to begin streaming telemetry.
+    <div class="empty-state empty-hero">
+        <h2 style="margin-bottom:6px;">No sensors yet</h2>
+        <p style="margin:0 0 16px;">Register a device to start streaming live telemetry onto this dashboard.</p>
+        <a class="btn btn-primary" href="sensors/register">Register your first sensor &rarr;</a>
     </div>
 }
 else
 {
-    <div class="panel" style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+    <div class="kpi-strip" style="margin-top:0;">
+        <div class="kpi kpi-wide">
+            <div class="health-card">
+                <div class="donut-wrap">
+                    <svg class="donut" viewBox="0 0 100 100">
+                        <circle class="donut-track" cx="50" cy="50" r="38" />
+                        <circle class="donut-value @DonutTone()" cx="50" cy="50" r="38" stroke-dasharray="@DonutDash()" />
+                    </svg>
+                    <div class="donut-center">@(_snapshots.Count == 0 ? "—" : $"{HealthyPercent}%")</div>
+                </div>
+                <div>
+                    <div class="kpi-label">Fleet health</div>
+                    <div class="kpi-sub" style="margin-top:6px; font-size:0.84rem;">
+                        @CountOf(TelemetryStatus.Normal) of @_snapshots.Count reporting sensors are operating normally.
+                    </div>
+                    <div class="kpi-sub">@_sensors.Count registered in total</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="kpi good">
+            <div class="kpi-label">Normal</div>
+            <div class="kpi-value">@CountOf(TelemetryStatus.Normal)</div>
+            <div class="kpi-sub">within threshold</div>
+        </div>
+        <div class="kpi warn">
+            <div class="kpi-label">Warning</div>
+            <div class="kpi-value">@CountOf(TelemetryStatus.Warning)</div>
+            <div class="kpi-sub">drifting from baseline</div>
+        </div>
+        <div class="kpi bad">
+            <div class="kpi-label">Anomalous</div>
+            <div class="kpi-value">@CountOf(TelemetryStatus.Anomalous)</div>
+            <div class="kpi-sub">sudden spike or drop</div>
+        </div>
+        <div class="kpi off">
+            <div class="kpi-label">Disconnected</div>
+            <div class="kpi-value">@CountOf(TelemetryStatus.Disconnected)</div>
+            <div class="kpi-sub">no recent telemetry</div>
+        </div>
+    </div>
+
+    <div class="panel" style="margin-top:18px; display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
         <span class="field-hint">Simulate readings for:</span>
         @foreach (var s in _sensors)
         {
@@ -48,85 +102,143 @@ else
         <div class="panel" style="margin-top:12px; display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
             <span class="field-hint">Aggregate demo (operator overload, Meter3 = Meter1 + Meter2):</span>
             <select @bind="_meterA">
-                @foreach (var s in _sensors) { <option value="@s.Id">@s.Location.NodeId</option> }
+                @foreach (var s in _sensors)
+                {
+                    <option value="@s.Id">@s.Location.NodeId</option>
+                }
             </select>
             <span class="field-hint">+</span>
             <select @bind="_meterB">
-                @foreach (var s in _sensors) { <option value="@s.Id">@s.Location.NodeId</option> }
+                @foreach (var s in _sensors)
+                {
+                    <option value="@s.Id">@s.Location.NodeId</option>
+                }
             </select>
             <button class="btn btn-sm" @onclick="AggregateAsync">Compute</button>
             @if (!string.IsNullOrEmpty(_aggregateResult))
             {
-                <span class="field-hint">@_aggregateResult</span>
+                <span class="chip accent">@_aggregateResult</span>
             }
         </div>
     }
 
-    <div class="telemetry-grid">
-        @foreach (var snap in _snapshots.OrderBy(s => s.DisplayName))
+    <div class="chip-row" style="margin-top:18px;">
+        <button class="filter-chip @(_statusFilter is null ? "active" : "")" @onclick="() => SetFilter(null)">
+            All <span class="count">@_snapshots.Count</span>
+        </button>
+        @foreach (var st in StatusOrder)
         {
-            var statusClass = StatusClass(snap.Status);
-            <div class="telemetry-card @statusClass">
-                <div class="telemetry-card-head">
-                    <div class="telemetry-name-group">
-                        <span class="telemetry-icon">@CategoryIcon(snap.Category)</span>
-                        <div>
-                            <div class="telemetry-name">@snap.DisplayName</div>
-                            <div class="telemetry-zone">@snap.Zone</div>
+            var chosen = st;
+            <button class="filter-chip @FilterClass(chosen) @(_statusFilter == chosen ? "active" : "")" @onclick="() => SetFilter(chosen)">
+                @chosen <span class="count">@CountOf(chosen)</span>
+            </button>
+        }
+    </div>
+
+    @if (VisibleSnapshots().Count == 0)
+    {
+        <div class="empty-state" style="margin-top:16px;">
+            @if (_snapshots.Count == 0)
+            {
+                <text>Sensors are registered but none have reported yet. Press <strong>▶ Start</strong> above to simulate readings.</text>
+            }
+            else
+            {
+                <text>No sensors match this filter right now.</text>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="telemetry-grid">
+            @foreach (var snap in VisibleSnapshots())
+            {
+                var statusClass = StatusClass(snap.Status);
+                var spark = BuildSpark(snap.Sparkline);
+                var sparkColor = SparklineColor(snap.Status);
+                var gradientId = $"grad-{snap.SensorId}";
+
+                <div class="telemetry-card @statusClass">
+                    <div class="telemetry-card-head">
+                        <div class="telemetry-name-group">
+                            <span class="telemetry-icon">@CategoryIcon(snap.Category)</span>
+                            <div>
+                                <div class="telemetry-name">@snap.DisplayName</div>
+                                <div class="telemetry-zone">@snap.Zone</div>
+                            </div>
                         </div>
+                        <span class="telemetry-badge @statusClass">@snap.Status</span>
                     </div>
-                    <span class="telemetry-badge @statusClass">@snap.Status</span>
-                </div>
 
-                <div class="telemetry-value-row">
-                    <span class="telemetry-value">@snap.LatestValue.ToString("0.0")@snap.Unit</span>
-                    <span class="telemetry-delta @DeltaClass(snap.DeltaPercent)">
-                        @(snap.DeltaPercent >= 0 ? "▲" : "▼") @Math.Abs(snap.DeltaPercent).ToString("0.0")%
-                    </span>
-                </div>
+                    <div class="telemetry-value-row">
+                        <span class="telemetry-value">@snap.LatestValue.ToString("0.0", CultureInfo.InvariantCulture)@snap.Unit</span>
+                        <span class="telemetry-delta @DeltaClass(snap.DeltaPercent)">
+                            @(snap.DeltaPercent >= 0 ? "▲" : "▼") @Math.Abs(snap.DeltaPercent).ToString("0.0", CultureInfo.InvariantCulture)%
+                        </span>
+                    </div>
 
-                <svg class="telemetry-sparkline" viewBox="0 0 100 32" preserveAspectRatio="none">
-                    @if (snap.Sparkline.Length > 1)
-                    {
-                        var sparkColor = SparklineColor(snap.Status);
-                        var gradientId = $"grad-{snap.SensorId}";
-                        <defs>
-                            <linearGradient id="@gradientId" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stop-color="@sparkColor" stop-opacity="0.35" />
-                                <stop offset="100%" stop-color="@sparkColor" stop-opacity="0" />
-                            </linearGradient>
-                        </defs>
-                        <polygon points="@BuildSparklineFillPoints(snap.Sparkline)" fill="url(#@gradientId)" stroke="none" />
-                        <polyline points="@BuildSparklinePoints(snap.Sparkline)"
-                                  fill="none"
-                                  stroke="@sparkColor"
-                                  stroke-width="2"
-                                  stroke-linecap="round"
-                                  stroke-linejoin="round" />
-                    }
-                </svg>
-
-                <div class="telemetry-footer">
-                    <span>
-                        @if (snap.Status == TelemetryStatus.Disconnected)
+                    <svg class="telemetry-sparkline" viewBox="0 0 240 64">
+                        @if (snap.Sparkline.Length > 1)
                         {
-                            <text>No telemetry for @snap.SecondsSinceUpdate.ToString("0")s</text>
+                            <defs>
+                                <linearGradient id="@gradientId" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stop-color="@sparkColor" stop-opacity="0.38" />
+                                    <stop offset="100%" stop-color="@sparkColor" stop-opacity="0" />
+                                </linearGradient>
+                            </defs>
+                            <polygon points="@spark.Fill" fill="url(#@gradientId)" stroke="none" />
+                            <polyline points="@spark.Line" fill="none" stroke="@sparkColor" stroke-width="2.2"
+                                      stroke-linecap="round" stroke-linejoin="round" />
+                            <circle class="spark-dot" cx="@spark.LastX" cy="@spark.LastY" r="3.6" fill="@sparkColor" />
                         }
                         else
                         {
-                            <text>Updated @snap.SecondsSinceUpdate.ToString("0")s ago</text>
+                            <line x1="0" y1="32" x2="240" y2="32" stroke="var(--border-bright)" stroke-width="1.5" stroke-dasharray="4 5" />
                         }
-                    </span>
+                    </svg>
+
+                    @if (snap.Sparkline.Length > 0)
+                    {
+                        <div class="spark-stats">
+                            <span class="spark-stat">Min <b>@snap.Sparkline.Min().ToString("0.0", CultureInfo.InvariantCulture)</b></span>
+                            <span class="spark-stat">Avg <b>@snap.Sparkline.Average().ToString("0.0", CultureInfo.InvariantCulture)</b></span>
+                            <span class="spark-stat">Max <b>@snap.Sparkline.Max().ToString("0.0", CultureInfo.InvariantCulture)</b></span>
+                        </div>
+                    }
+
+                    <div class="telemetry-footer">
+                        <span>
+                            @if (snap.Status == TelemetryStatus.Disconnected)
+                            {
+                                <text>No telemetry for @snap.SecondsSinceUpdate.ToString("0", CultureInfo.InvariantCulture)s</text>
+                            }
+                            else
+                            {
+                                <text>Updated @snap.SecondsSinceUpdate.ToString("0", CultureInfo.InvariantCulture)s ago</text>
+                            }
+                        </span>
+                    </div>
                 </div>
-            </div>
-        }
-    </div>
+            }
+        </div>
+    }
 }
 
 @code {
+    private static readonly TelemetryStatus[] StatusOrder =
+    {
+        TelemetryStatus.Anomalous,
+        TelemetryStatus.Warning,
+        TelemetryStatus.Disconnected,
+        TelemetryStatus.Normal
+    };
+
     private List<DeviceProfile>? _sensors;
     private List<TelemetrySnapshotDto> _snapshots = new();
     private readonly HashSet<string> _running = new();
+    private TelemetryStatus? _statusFilter;
+    private bool _apiOnline = true;
+
     private PeriodicTimer? _timer;
     private CancellationTokenSource? _cts;
     private string? _meterA;
@@ -136,13 +248,21 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        _sensors = await Api.GetSensorsAsync();
-        if (_sensors.Count > 0)
+        try
         {
-            _meterA = _sensors[0].Id;
-            _meterB = _sensors[Math.Min(1, _sensors.Count - 1)].Id;
+            _sensors = await Api.GetSensorsAsync();
+            if (_sensors.Count > 0)
+            {
+                _meterA = _sensors[0].Id;
+                _meterB = _sensors[Math.Min(1, _sensors.Count - 1)].Id;
+            }
+            await RefreshAsync();
         }
-        await RefreshAsync();
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            _apiOnline = false;
+            _sensors ??= new List<DeviceProfile>();
+        }
 
         _cts = new CancellationTokenSource();
         _timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
@@ -167,8 +287,16 @@ else
 
     private async Task RefreshAsync()
     {
-        _snapshots = await Api.GetAllTelemetryAsync();
-        _lastPolled = DateTimeOffset.Now;
+        try
+        {
+            _snapshots = await Api.GetAllTelemetryAsync();
+            _lastPolled = DateTimeOffset.Now;
+            _apiOnline = true;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            _apiOnline = false;
+        }
     }
 
     private async Task ManualRefreshAsync()
@@ -196,9 +324,54 @@ else
     private async Task AggregateAsync()
     {
         if (string.IsNullOrEmpty(_meterA) || string.IsNullOrEmpty(_meterB)) return;
+
         var result = await Api.AggregateMetersAsync(_meterA, _meterB);
-        _aggregateResult = result?.ToString() ?? "No readings yet for one of those sensors.";
+        if (result is System.Text.Json.JsonElement el &&
+            el.TryGetProperty("meter1", out var m1) &&
+            el.TryGetProperty("meter2", out var m2) &&
+            el.TryGetProperty("aggregate", out var agg))
+        {
+            double w1 = m1.GetProperty("watts").GetDouble();
+            double w2 = m2.GetProperty("watts").GetDouble();
+            double w3 = agg.GetProperty("watts").GetDouble();
+            _aggregateResult = string.Format(CultureInfo.InvariantCulture, "{0:0.0} + {1:0.0} = {2:0.0}", w1, w2, w3);
+        }
+        else
+        {
+            _aggregateResult = "No readings yet for one of those sensors.";
+        }
     }
+
+    private void SetFilter(TelemetryStatus? status) => _statusFilter = status;
+
+    private int CountOf(TelemetryStatus status) => _snapshots.Count(s => s.Status == status);
+
+    private int HealthyPercent =>
+        _snapshots.Count == 0 ? 0 : (int)Math.Round(100.0 * CountOf(TelemetryStatus.Normal) / _snapshots.Count);
+
+    /// <summary>Most urgent first (anomalous, warning, disconnected, normal), then alphabetical.</summary>
+    private List<TelemetrySnapshotDto> VisibleSnapshots() =>
+        _snapshots
+            .Where(s => _statusFilter is null || s.Status == _statusFilter)
+            .OrderBy(s => Array.IndexOf(StatusOrder, s.Status))
+            .ThenBy(s => s.DisplayName)
+            .ToList();
+
+ 
+    private string DonutDash()
+    {
+        const double circumference = 2 * Math.PI * 38;
+        double filled = circumference * HealthyPercent / 100.0;
+        return string.Format(CultureInfo.InvariantCulture, "{0:0.0} {1:0.0}", filled, circumference);
+    }
+
+    private string DonutTone()
+    {
+        int pct = HealthyPercent;
+        if (_snapshots.Count == 0 || pct >= 80) return "";
+        return pct >= 50 ? "mid" : "low";
+    }
+
 
     private static MarkupString CategoryIcon(SensorCategory category) => category switch
     {
@@ -225,54 +398,63 @@ else
         _ => "status-normal"
     };
 
-    private static string DeltaClass(double deltaPercent) =>
-        deltaPercent > 0.5 ? "up" : deltaPercent < -0.5 ? "down" : "flat";
+    private static string FilterClass(TelemetryStatus status) => status switch
+    {
+        TelemetryStatus.Normal => "fc-normal",
+        TelemetryStatus.Warning => "fc-warning",
+        TelemetryStatus.Anomalous => "fc-anomalous",
+        TelemetryStatus.Disconnected => "fc-disconnected",
+        _ => "fc-normal"
+    };
+
+    private static string DeltaClass(double deltaPercent)
+    {
+        if (deltaPercent > 0.5) return "up";
+        if (deltaPercent < -0.5) return "down";
+        return "flat";
+    }
 
     private static string SparklineColor(TelemetryStatus status) => status switch
     {
         TelemetryStatus.Normal => "#3DDC97",
         TelemetryStatus.Warning => "#F2B134",
-        TelemetryStatus.Anomalous => "#E5484D",
+        TelemetryStatus.Anomalous => "#F0555B",
         TelemetryStatus.Disconnected => "#5B6472",
         _ => "#3DDC97"
     };
 
-    /// <summary>
-    /// Maps a sparkline value series onto a 100x32 viewBox as SVG polyline
-    /// points — this is the client-side half of the real-time visual
-    /// telemetry feedback strategy from the Task 1 research report.
-    /// </summary>
-    private static string BuildSparklinePoints(double[] values, double width = 100, double height = 32)
+    private static (string Line, string Fill, string LastX, string LastY) BuildSpark(double[] values)
     {
+        const double width = 240;
+        const double height = 64;
+        const double pad = 7;
+
+        if (values.Length < 2)
+        {
+            return ("", "", "0", "0");
+        }
+
+        var inv = CultureInfo.InvariantCulture;
         double min = values.Min();
         double max = values.Max();
         double range = max - min;
         if (range < 1e-9) range = 1;
 
         var points = new List<string>(values.Length);
+        double lastX = 0, lastY = 0;
         for (int i = 0; i < values.Length; i++)
         {
-            double x = values.Length == 1 ? width : (double)i / (values.Length - 1) * width;
+            double x = (double)i / (values.Length - 1) * width;
             double normalized = (values[i] - min) / range;
-            double y = height - normalized * height;
-            points.Add($"{x.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)},{y.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)}");
+            double y = pad + (1 - normalized) * (height - 2 * pad);
+            points.Add($"{x.ToString("F1", inv)},{y.ToString("F1", inv)}");
+            lastX = x;
+            lastY = y;
         }
-        return string.Join(" ", points);
-    }
 
-    /// <summary>
-    /// Same normalisation as <see cref="BuildSparklinePoints"/>, but closes
-    /// the shape down to the baseline so it can be filled as a soft gradient
-    /// area beneath the line — purely a visual polish layer under the same
-    /// data the polyline already renders.
-    /// </summary>
-    private static string BuildSparklineFillPoints(double[] values, double width = 100, double height = 32)
-    {
-        string line = BuildSparklinePoints(values, width, height);
-        var inv = System.Globalization.CultureInfo.InvariantCulture;
-        string bottomRight = $"{width.ToString("F1", inv)},{height.ToString("F1", inv)}";
-        string bottomLeft = $"0.0,{height.ToString("F1", inv)}";
-        return $"{line} {bottomRight} {bottomLeft}";
+        string line = string.Join(" ", points);
+        string fill = $"{line} {width.ToString("F1", inv)},{height.ToString("F1", inv)} 0.0,{height.ToString("F1", inv)}";
+        return (line, fill, lastX.ToString("F1", inv), lastY.ToString("F1", inv));
     }
 
     public async ValueTask DisposeAsync()
