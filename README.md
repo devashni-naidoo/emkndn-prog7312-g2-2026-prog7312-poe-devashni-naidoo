@@ -244,7 +244,7 @@ Install the following before running the solution:
 ### 1. Clone the repository
 
 ```bash
-git clone [<repo>](https://github.com/devashni-naidoo/emkndn-prog7312-g2-2026-prog7312-poe-devashni-naidoo)
+git clone https://github.com/devashni-naidoo/emkndn-prog7312-g2-2026-prog7312-poe-devashni-naidoo
 ```
 
 ### 2. Restore and build
