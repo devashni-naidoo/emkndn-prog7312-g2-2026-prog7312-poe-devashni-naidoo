@@ -1,66 +1,369 @@
 @page "/"
+@rendermode InteractiveServer
+@using SmartX.Shared.Dtos
+@using SmartX.Client.Services
+@inject SmartXApiClient Api
+@implements IAsyncDisposable
 
-<PageTitle>Smart-X · Overview</PageTitle>
+<PageTitle>Smart-X · IoT Command Centre</PageTitle>
 
-<div class="page-header">
-    <h1>Smart-X Ecosystem</h1>
-    <p>
-        Core data ingestion engine. Three architectural pillars make up the
-        full platform; Part 1 of this PoE implements the first.
-    </p>
-</div>
-
-<div class="pillar-grid">
-    <div class="pillar enabled">
-        <span class="pillar-icon">
-            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M3 13h4l2-7 4 14 2-7h6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-        </span>
-        <span class="pillar-index">PILLAR 01</span>
-        <span class="pillar-title">Sensor Data Ingestion &amp; Telemetry</span>
-        <p class="pillar-desc">
-            Register devices, validate their deployment hierarchy, attach
-            config/log files, and watch live readings with anomaly and
-            disconnect highlighting.
+<section class="hero">
+    <div>
+        <span class="hero-eyebrow">PROG7312 · Portfolio of Evidence</span>
+        <h1>Command your <span class="grad">connected world</span> in real time.</h1>
+        <p class="lead">
+            Smart-X ingests live signals from ESP32 microcontrollers, smart plugs and
+            environmental sensors, validates where each device lives, flags anomalies the
+            moment they happen, and lets operators respond instantly, with undo, priority
+            routing and suggestions learned from past behaviour.
         </p>
-        <span class="pillar-state live"><span class="pip"></span> Active</span>
-        <a class="pillar-cta" href="telemetry">Open dashboard &rarr;</a>
+        <div class="hero-actions">
+            <a class="btn btn-primary btn-lg" href="telemetry">Open live dashboard &rarr;</a>
+            <a class="btn btn-lg" href="commands">Command stream</a>
+            <a class="btn btn-lg btn-ghost" href="about">About the project</a>
+        </div>
     </div>
 
-    <div class="pillar enabled">
-        <span class="pillar-icon">
-            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="3" y="4" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.7"/>
-                <path d="M7 9l3 3-3 3M12 15h5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-        </span>
-        <span class="pillar-index">PILLAR 02</span>
-        <span class="pillar-title">Real-Time Command Stream &amp; History</span>
-        <p class="pillar-desc">
-            Issue manual override commands to deployed devices, search and
-            filter by category or alert state, and get automated suggested
-            actions based on historical patterns.
-        </p>
-        <span class="pillar-state live"><span class="pip"></span> Active</span>
-        <a class="pillar-cta" href="commands">Open command stream &rarr;</a>
+    <div class="hero-visual" aria-hidden="true">
+        <svg viewBox="0 0 360 260" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <linearGradient id="heroGrad" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stop-color="#3EE0C8" />
+                    <stop offset="100%" stop-color="#7C8CFF" />
+                </linearGradient>
+            </defs>
+            <circle class="ring r1" cx="180" cy="120" r="70" stroke="url(#heroGrad)" stroke-width="1.5" />
+            <circle class="ring r2" cx="180" cy="120" r="70" stroke="url(#heroGrad)" stroke-width="1.5" />
+            <circle class="ring r3" cx="180" cy="120" r="70" stroke="url(#heroGrad)" stroke-width="1.5" />
+
+            <g stroke="url(#heroGrad)" stroke-width="1" opacity="0.5">
+                <line x1="180" y1="120" x2="70" y2="62" />
+                <line x1="180" y1="120" x2="292" y2="56" />
+                <line x1="180" y1="120" x2="60" y2="150" />
+                <line x1="180" y1="120" x2="300" y2="158" />
+            </g>
+
+            <circle class="node-dot d1" cx="70" cy="62" r="6" fill="#3EE0C8" />
+            <circle class="node-dot d2" cx="292" cy="56" r="6" fill="#7C8CFF" />
+            <circle class="node-dot d3" cx="60" cy="150" r="6" fill="#7C8CFF" />
+            <circle class="node-dot d4" cx="300" cy="158" r="6" fill="#3EE0C8" />
+
+            <circle cx="180" cy="120" r="20" fill="url(#heroGrad)" />
+            <path d="M168 120h6l3-9 6 18 3-9h6" stroke="#06201B" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+
+            <path class="wave" d="M10 226 H80 L98 198 L118 248 L140 212 L160 226 H350" stroke="url(#heroGrad)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+    </div>
+</section>
+
+<section class="section">
+    <div class="section-head">
+        <div>
+            <span class="eyebrow">Live system pulse</span>
+            <h2>What your fleet is doing right now</h2>
+        </div>
+        <span class="live-pill @(_apiOnline ? "" : "offline")">@(_apiOnline ? "Live · refreshes every 5s" : "API offline")</span>
     </div>
 
-    <div class="pillar disabled">
-        <span class="pillar-icon">
-            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="12" cy="5" r="2.3" stroke="currentColor" stroke-width="1.7"/>
-                <circle cx="5" cy="18" r="2.3" stroke="currentColor" stroke-width="1.7"/>
-                <circle cx="19" cy="18" r="2.3" stroke="currentColor" stroke-width="1.7"/>
-                <path d="M10.5 6.6L6.7 16M13.5 6.6L17.3 16M7.3 18h9.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
-            </svg>
-        </span>
-        <span class="pillar-index">PILLAR 03</span>
-        <span class="pillar-title">Network Topology &amp; Mesh Routing</span>
-        <p class="pillar-desc">
-            Visualise the device mesh and manage routing between facilities,
-            zones and nodes.
-        </p>
-        <span class="pillar-state locked"><span class="pip"></span> Final PoE</span>
+    @if (!_apiOnline)
+    {
+        <div class="banner banner-error">
+            Can't reach the Smart-X API. Start <strong>SmartX.Api</strong> (http://localhost:5080) and this
+            page will reconnect on its own.
+        </div>
+    }
+
+    <div class="kpi-strip">
+        <div class="kpi info">
+            <div class="kpi-label">
+                <svg viewBox="0 0 24 24" fill="none"><rect x="5" y="5" width="14" height="14" rx="3" stroke="currentColor" stroke-width="1.7" /><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" /></svg>
+                Registered devices
+            </div>
+            <div class="kpi-value">@Show(_total)</div>
+            <div class="kpi-sub">@_reporting reporting telemetry</div>
+        </div>
+
+        <div class="kpi good">
+            <div class="kpi-label">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M12 21s-7-4.5-9-9a5 5 0 0 1 9-3 5 5 0 0 1 9 3c-2 4.5-9 9-9 9Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" /></svg>
+                Fleet health
+            </div>
+            <div class="kpi-value">@(_reporting == 0 ? "—" : $"{HealthyPercent}%")</div>
+            <div class="kpi-sub">@_normal of @_reporting sensors normal</div>
+        </div>
+
+        <div class="kpi @(Alerts > 0 ? "bad" : "good")">
+            <div class="kpi-label">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M12 3 2 20h20L12 3Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" /><path d="M12 10v4M12 17v.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
+                Active alerts
+            </div>
+            <div class="kpi-value">@Show(Alerts)</div>
+            <div class="kpi-sub">@_anomalous anomalous · @_disconnected disconnected</div>
+        </div>
+
+        <div class="kpi info">
+            <div class="kpi-label">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M7 9l3 3-3 3M12 15h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /><rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.7" /></svg>
+                Commands executed
+            </div>
+            <div class="kpi-value">@Show(_commands)</div>
+            <div class="kpi-sub">stored on the undo stack</div>
+        </div>
+
+        <div class="kpi @(_queueCritical > 0 ? "warn" : "good")">
+            <div class="kpi-label">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
+                Queue depth
+            </div>
+            <div class="kpi-value">@Show(_queueStandard + _queueCritical)</div>
+            <div class="kpi-sub">@_queueCritical critical waiting</div>
+        </div>
     </div>
-</div>
+</section>
+
+<section class="section">
+    <div class="section-head">
+        <div>
+            <span class="eyebrow">Platform modules</span>
+            <h2>Three pillars, one ecosystem</h2>
+            <p class="section-sub">Each module builds on the one before it. Two are live; the third arrives in the final PoE.</p>
+        </div>
+    </div>
+
+    <div class="pillar-grid" style="margin-top:0;">
+        <div class="pillar enabled">
+            <span class="pillar-icon">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M3 13h4l2-7 4 14 2-7h6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+            </span>
+            <span class="pillar-index">PILLAR 01</span>
+            <span class="pillar-title">Sensor Data Ingestion &amp; Telemetry</span>
+            <p class="pillar-desc">
+                Register devices, validate their deployment hierarchy, attach config files and logs,
+                and watch live readings with anomaly and disconnect highlighting.
+            </p>
+            <span class="pillar-state live"><span class="pip"></span> Active · Part 1</span>
+            <a class="pillar-cta" href="telemetry">Open dashboard &rarr;</a>
+        </div>
+
+        <div class="pillar enabled">
+            <span class="pillar-icon">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="3" y="4" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.7" />
+                    <path d="M7 9l3 3-3 3M12 15h5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+            </span>
+            <span class="pillar-index">PILLAR 02</span>
+            <span class="pillar-title">Real-Time Command Stream &amp; History</span>
+            <p class="pillar-desc">
+                Issue manual overrides, search and filter the fleet, route critical commands ahead of the
+                queue, undo mistakes, and act on suggestions learned from operator behaviour.
+            </p>
+            <span class="pillar-state live"><span class="pip"></span> Active · Part 2</span>
+            <a class="pillar-cta" href="commands">Open command stream &rarr;</a>
+        </div>
+
+        <div class="pillar disabled">
+            <span class="pillar-icon">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="12" cy="5" r="2.3" stroke="currentColor" stroke-width="1.7" />
+                    <circle cx="5" cy="18" r="2.3" stroke="currentColor" stroke-width="1.7" />
+                    <circle cx="19" cy="18" r="2.3" stroke="currentColor" stroke-width="1.7" />
+                    <path d="M10.5 6.6L6.7 16M13.5 6.6L17.3 16M7.3 18h9.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
+                </svg>
+            </span>
+            <span class="pillar-index">PILLAR 03</span>
+            <span class="pillar-title">Network Topology &amp; Mesh Routing</span>
+            <p class="pillar-desc">
+                Visualise the device mesh and manage routing between facilities, zones and nodes.
+            </p>
+            <span class="pillar-state locked"><span class="pip"></span> Final PoE</span>
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <div class="section-head">
+        <div>
+            <span class="eyebrow">Under the hood</span>
+            <h2>How a single reading travels</h2>
+            <p class="section-sub">From a sensor on a wall to a colour change on your screen, in well under a second.</p>
+        </div>
+    </div>
+
+    <div class="flow">
+        <div class="flow-step">
+            <div class="num">01</div>
+            <div class="t">Device</div>
+            <div class="d">ESP32s, smart plugs and sensors send readings over HTTP.</div>
+        </div>
+        <div class="flow-step">
+            <div class="num">02</div>
+            <div class="t">Ingestion API</div>
+            <div class="d">ASP.NET Core wraps values in a generic <code class="inline">TelemetryPacket&lt;T&gt;</code>.</div>
+        </div>
+        <div class="flow-step">
+            <div class="num">03</div>
+            <div class="t">Validation</div>
+            <div class="d">Deployment paths are checked recursively; devices are found by MAC in O(1).</div>
+        </div>
+        <div class="flow-step">
+            <div class="num">04</div>
+            <div class="t">Queues</div>
+            <div class="d">A FIFO queue handles normal work; a priority queue jumps critical alerts ahead.</div>
+        </div>
+        <div class="flow-step">
+            <div class="num">05</div>
+            <div class="t">Worker</div>
+            <div class="d">A background service executes commands and records a time-ordered history.</div>
+        </div>
+        <div class="flow-step">
+            <div class="num">06</div>
+            <div class="t">Live UI</div>
+            <div class="d">SignalR pushes results to your browser the instant they happen.</div>
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <div class="section-head">
+        <div>
+            <span class="eyebrow">Capabilities</span>
+            <h2>Built to keep operators in control</h2>
+        </div>
+    </div>
+
+    <div class="feature-grid">
+        <div class="feature">
+            <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none"><path d="M3 17l4-6 3 3 5-8 6 11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg></div>
+            <h3>Glanceable telemetry</h3>
+            <p>Sparklines, percentage deltas and status colours show what changed and how fast, without reading a single raw number.</p>
+        </div>
+        <div class="feature">
+            <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3 2 20h20L12 3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" /><path d="M12 10v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg></div>
+            <h3>Alerts without the noise</h3>
+            <p>Thresholds adapt to each sensor category, and a hash set makes sure the same disconnect is never raised twice.</p>
+        </div>
+        <div class="feature">
+            <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none"><path d="M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg></div>
+            <h3>Undo for the real world</h3>
+            <p>Every command lands on a stack, so the last action, like shutting a valve, can be reversed in one click.</p>
+        </div>
+        <div class="feature">
+            <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" /></svg></div>
+            <h3>Priority routing</h3>
+            <p>Critical commands bypass the standard queue entirely, so a severe power spike is handled before routine work.</p>
+        </div>
+        <div class="feature">
+            <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8" /><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg></div>
+            <h3>An engine that learns</h3>
+            <p>Smart-X notices which command operators choose for each kind of alert, then suggests it the next time.</p>
+        </div>
+        <div class="feature">
+            <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="1.8" /><path d="m16 16 5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg></div>
+            <h3>Find any device fast</h3>
+            <p>Search by node, MAC address or zone, then narrow by category or by whether a device has an active alert.</p>
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <div class="section-head">
+        <div>
+            <span class="eyebrow">Technology</span>
+            <h2>What it's built with</h2>
+        </div>
+        <a class="btn" href="about">Read the full project story &rarr;</a>
+    </div>
+    <div class="chip-row">
+        <span class="chip accent">.NET 8</span>
+        <span class="chip accent">ASP.NET Core Web API</span>
+        <span class="chip accent">Blazor Server</span>
+        <span class="chip accent">SignalR</span>
+        <span class="chip">Generics</span>
+        <span class="chip">Operator overloading</span>
+        <span class="chip">Recursion</span>
+        <span class="chip">Queue / PriorityQueue</span>
+        <span class="chip">Stack</span>
+        <span class="chip">Dictionary / SortedDictionary</span>
+        <span class="chip">HashSet</span>
+        <span class="chip">Docker</span>
+    </div>
+</section>
+
+@code {
+    private bool _apiOnline = true;
+    private bool _loaded;
+    private int _total, _reporting, _normal, _warning, _anomalous, _disconnected;
+    private int _commands, _queueStandard, _queueCritical;
+
+    private PeriodicTimer? _timer;
+    private CancellationTokenSource? _cts;
+
+    private int Alerts => _anomalous + _disconnected;
+    private int HealthyPercent => _reporting == 0 ? 0 : (int)Math.Round(100.0 * _normal / _reporting);
+
+    private string Show(int value) => _loaded ? value.ToString() : "…";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshAsync();
+
+        _cts = new CancellationTokenSource();
+        _timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+        _ = LoopAsync(_cts.Token);
+    }
+
+    private async Task LoopAsync(CancellationToken token)
+    {
+        try
+        {
+            while (await _timer!.WaitForNextTickAsync(token))
+            {
+                await RefreshAsync();
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when the page is left.
+        }
+    }
+
+    private async Task RefreshAsync()
+    {
+        try
+        {
+            var sensors = await Api.GetSensorsAsync();
+            var snapshots = await Api.GetAllTelemetryAsync();
+            var history = await Api.GetCommandHistoryAsync(1000);
+            var (standard, critical) = await Api.GetQueueDepthAsync();
+
+            _total = sensors.Count;
+            _reporting = snapshots.Count;
+            _normal = snapshots.Count(s => s.Status == TelemetryStatus.Normal);
+            _warning = snapshots.Count(s => s.Status == TelemetryStatus.Warning);
+            _anomalous = snapshots.Count(s => s.Status == TelemetryStatus.Anomalous);
+            _disconnected = snapshots.Count(s => s.Status == TelemetryStatus.Disconnected);
+            _commands = history.Count;
+            _queueStandard = standard;
+            _queueCritical = critical;
+            _apiOnline = true;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            _apiOnline = false;
+        }
+
+        _loaded = true;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _cts?.Cancel();
+        _timer?.Dispose();
+        _cts?.Dispose();
+        await Task.CompletedTask;
+    }
+}
