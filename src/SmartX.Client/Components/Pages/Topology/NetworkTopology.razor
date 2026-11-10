@@ -1,0 +1,836 @@
+@page "/topology"
+@rendermode InteractiveServer
+@using System.Globalization
+@using SmartX.Shared.Dtos
+@using SmartX.Client.Services
+@inject SmartXApiClient Api
+@implements IAsyncDisposable
+
+<PageTitle>Smart-X · Network Topology</PageTitle>
+
+<div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
+    <div>
+        <h1>Network Topology &amp; Mesh Routing</h1>
+        <p>
+            The wireless mesh as a graph: sensors are vertices, links are edges. Trace any node's route to the
+            central server, see what survives a failure, and query a sensor's history by time range.
+        </p>
+    </div>
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <span class="live-pill @(_apiOnline ? "" : "offline")">@(_apiOnline ? "Live · every 3s" : "API offline")</span>
+        <button class="btn btn-sm" @onclick="SeedDemoAsync" disabled="@_busy">Load demo network</button>
+        <button class="btn btn-sm" @onclick="ManualRefreshAsync">↻ Refresh</button>
+    </div>
+</div>
+
+@if (!_apiOnline)
+{
+    <div class="banner banner-error" style="margin-bottom:16px;">
+        Can't reach the Smart-X API. Start <strong>SmartX.Api</strong> and this page will reconnect on its own.
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(_notice))
+{
+    <div class="banner banner-success" style="margin-bottom:16px;">@_notice</div>
+}
+
+@if (_topology is null)
+{
+    <p class="field-hint">Loading network...</p>
+}
+else if (_topology.SensorCount == 0)
+{
+    <div class="empty-state empty-hero">
+        <h2 style="margin-bottom:6px;">No sensors in the mesh yet</h2>
+        <p style="margin:0 0 16px;">
+            Register sensors, or load a ready-made 10-sensor, 3-zone demo network with six hours of history.
+        </p>
+        <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+            <button class="btn btn-primary" @onclick="SeedDemoAsync" disabled="@_busy">Load demo network</button>
+            <a class="btn" href="sensors/register">Register a sensor</a>
+        </div>
+    </div>
+}
+else
+{
+    <!-- ============================ KPI strip ============================ -->
+    <div class="kpi-strip" style="margin-top:0;">
+        <div class="kpi info">
+            <div class="kpi-label">Sensors in mesh</div>
+            <div class="kpi-value">@_topology.SensorCount</div>
+            <div class="kpi-sub">@_topology.Gateways.Count gateways · @_topology.LinkCount links</div>
+        </div>
+        <div class="kpi @(_topology.DownSensors + _topology.IsolatedSensors == 0 ? "good" : "bad")">
+            <div class="kpi-label">Online &amp; routed</div>
+            <div class="kpi-value">@_topology.OnlineSensors</div>
+            <div class="kpi-sub">@_topology.DownSensors down · @_topology.IsolatedSensors isolated</div>
+        </div>
+        <div class="kpi good">
+            <div class="kpi-label">Spanning-tree cost</div>
+            <div class="kpi-value">@N1(_topology.MstTotalCost)</div>
+            <div class="kpi-sub">@_topology.MstLinkCount links carry telemetry</div>
+        </div>
+        <div class="kpi @(Savings > 0 ? "good" : "off")">
+            <div class="kpi-label">Power saved vs all links</div>
+            <div class="kpi-value">@(Savings.ToString("0", CultureInfo.InvariantCulture))%</div>
+            <div class="kpi-sub">@N1(_topology.ActiveLinkCost) if every link transmitted</div>
+        </div>
+    </div>
+
+    <!-- ============================ Mesh map ============================= -->
+    <section class="panel topo-panel">
+        <div class="topo-head">
+            <h2>Live mesh map</h2>
+            <div class="topo-legend">
+                <span><i class="lg lg-mst"></i> MST (power-efficient)</span>
+                <span><i class="lg lg-route"></i> Traced route</span>
+                <span><i class="lg lg-link"></i> Other link</span>
+                <span><i class="lg lg-down"></i> Down / cut</span>
+            </div>
+        </div>
+
+        <svg class="topo-svg" viewBox="0 0 900 600" role="img" aria-label="IoT mesh network topology">
+            @foreach (var e in _topology.Edges)
+            {
+                if (!_pos.TryGetValue(e.From, out var a) || !_pos.TryGetValue(e.To, out var b)) { continue; }
+                <line x1="@F(a.X)" y1="@F(a.Y)" x2="@F(b.X)" y2="@F(b.Y)" class="mesh-edge @EdgeClass(e)" />
+            }
+
+            @foreach (var e in _topology.Edges.Where(x => x.InMst || IsRouteEdge(x)))
+            {
+                if (!_pos.TryGetValue(e.From, out var a) || !_pos.TryGetValue(e.To, out var b)) { continue; }
+                <g>
+                    <text x="@F((a.X + b.X) / 2)" y="@F((a.Y + b.Y) / 2 - 4)" class="edge-cost @(IsRouteEdge(e) ? "on-route" : "")">@N1(e.Cost)</text>
+                </g>
+            }
+
+            @foreach (var n in _topology.Nodes)
+            {
+                if (!_pos.TryGetValue(n.Id, out var p)) { continue; }
+                <g class="mesh-node @NodeClass(n)" transform="translate(@F(p.X) @F(p.Y))" @onclick="() => SelectNodeAsync(n)">
+                    <title>@NodeTitle(n)</title>
+                    @if (_selectedId == n.Id)
+                    {
+                        <circle r="@F(Radius(n) + 7)" class="node-ring" />
+                    }
+                    <circle r="@F(Radius(n))" class="node-dot" />
+                    @if (n.Kind == "Server")
+                    {
+                        <path d="M-7 0h4l2-6 4 12 2-6h4" class="server-glyph" />
+                    }
+                    <text y="@F(Radius(n) + 14)" class="node-label">@ShortLabel(n)</text>
+                </g>
+            }
+        </svg>
+        <p class="field-hint" style="margin:8px 0 0;">
+            Click a sensor to trace its route, or a gateway to inspect its subnet. Link numbers are relative transmit
+            energy per packet.
+        </p>
+    </section>
+
+    <div class="topo-two-col">
+        <!-- ========================== Route tracker ========================== -->
+        <section class="panel">
+            <h2>Route tracker</h2>
+            <p class="field-hint" style="margin:0 0 12px;">
+                Enter a MAC address or Node ID to follow its path to the central server.
+            </p>
+            <div class="topo-form">
+                <input type="text" list="sensor-options" placeholder="AA:BB:CC:DD:EE:FF or ESP32-A1"
+                       @bind="_routeInput" @bind:event="oninput" @onkeyup="HandleRouteKey" />
+                <datalist id="sensor-options">
+                    @foreach (var s in SensorNodes)
+                    {
+                        <option value="@s.MacAddress">@s.Label</option>
+                    }
+                </datalist>
+                <select @bind="_routeMode">
+                    <option value="mst">Power-efficient (Prim's MST)</option>
+                    <option value="hops">Fewest hops (BFS)</option>
+                </select>
+                <button class="btn btn-sm btn-primary" @onclick="TraceRouteAsync">Trace route</button>
+            </div>
+
+            @if (_route is not null)
+            {
+                <div class="route-card @(_route.Found ? (_route.Rerouted ? "rerouted" : "ok") : "broken")">
+                    <div class="route-title">
+                        <strong>@_route.Label</strong>
+                        @if (!string.IsNullOrEmpty(_route.MacAddress))
+                        {
+                            <code class="inline">@_route.MacAddress</code>
+                        }
+                    </div>
+                    <div class="route-msg">@_route.Message</div>
+
+                    @if (_route.Found)
+                    {
+                        <div class="hop-chain">
+                            @for (int i = 0; i < _route.Hops.Count; i++)
+                            {
+                                var hop = _route.Hops[i];
+                                if (i > 0)
+                                {
+                                    <span class="hop-arrow">→<small>@N1(hop.LinkCost)</small></span>
+                                }
+                                <span class="hop-chip @hop.Kind.ToLowerInvariant()">@hop.Label</span>
+                            }
+                        </div>
+                        <div class="route-stats">
+                            <span><b>@_route.HopCount</b> hops</span>
+                            <span><b>@N1(_route.TotalCost)</b> total cost</span>
+                            @if (_route.Rerouted)
+                            {
+                                <span class="tag-warn">+@N1(_route.TotalCost - _route.BaselineCost) vs healthy route</span>
+                            }
+                        </div>
+                    }
+
+                    @if (_route.BaselineHops.Count > 0 && (_route.Rerouted || !_route.Found))
+                    {
+                        <div class="route-baseline">
+                            <span class="field-hint">Normal route when the mesh is healthy (cost @N1(_route.BaselineCost)):</span>
+                            <div class="hop-chain dim">
+                                @for (int i = 0; i < _route.BaselineHops.Count; i++)
+                                {
+                                    var hop = _route.BaselineHops[i];
+                                    if (i > 0)
+                                    {
+                                        <span class="hop-arrow">→</span>
+                                    }
+                                    <span class="hop-chip @hop.Kind.ToLowerInvariant() @(_route.BypassedNodes.Contains(hop.Label) ? "bypassed" : "")">@hop.Label</span>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="empty-state" style="padding:22px;">No route traced yet.</div>
+            }
+
+            @{ var sel = SelectedNode; }
+            @if (sel is not null && sel.Kind != "Server")
+            {
+                <div class="node-actions">
+                    <span class="field-hint">
+                        Selected: <b>@sel.Label</b> (@(sel.Online ? "online" : "down · " + sel.DownReason))
+                    </span>
+                    @if (sel.Online)
+                    {
+                        <button class="btn btn-sm" @onclick="() => SetDownAsync(sel, true)">Simulate failure</button>
+                    }
+                    else if (sel.DownReason == "Manual")
+                    {
+                        <button class="btn btn-sm btn-primary" @onclick="() => SetDownAsync(sel, false)">Restore node</button>
+                    }
+                    else
+                    {
+                        <span class="field-hint">Telemetry stopped - start its simulation on the Telemetry Dashboard to bring it back.</span>
+                    }
+                    @if (sel.Kind == "Sensor")
+                    {
+                        <a class="btn btn-sm btn-ghost" href="commands">Command stream →</a>
+                    }
+                </div>
+            }
+        </section>
+
+        <!-- ===================== Connectivity / failover ===================== -->
+        <section class="panel">
+            <h2>Connectivity &amp; failover</h2>
+            <p class="field-hint" style="margin:0 0 12px;">
+                Traverse a gateway's subnet to see who is still connected, who is down, and where traffic can hop instead.
+            </p>
+            <div class="topo-form">
+                <select @bind="_gatewayId" @bind:after="LoadConnectivityAsync">
+                    <option value="SERVER">Whole network (central server)</option>
+                    @foreach (var g in GatewayNodes)
+                    {
+                        <option value="@g.Id">@g.Label@(g.Online ? "" : " (down)")</option>
+                    }
+                </select>
+                <select @bind="_algorithm" @bind:after="LoadConnectivityAsync">
+                    <option value="bfs">Breadth-first search</option>
+                    <option value="dfs">Depth-first search</option>
+                </select>
+            </div>
+
+            @if (_connectivity is not null)
+            {
+                <div class="conn-summary">
+                    <span class="conn-count good"><b>@_connectivity.Connected.Count</b> connected</span>
+                    <span class="conn-count @(_connectivity.Down.Count > 0 ? "bad" : "off")"><b>@_connectivity.Down.Count</b> down</span>
+                    <span class="conn-count @(_connectivity.Stranded.Count > 0 ? "warn" : "off")"><b>@_connectivity.Stranded.Count</b> need a new hop</span>
+                </div>
+
+                <div class="field-hint" style="margin-bottom:4px;">
+                    @(_connectivity.Algorithm == "dfs" ? "DFS" : "BFS") visit order from @_connectivity.GatewayLabel:
+                </div>
+                <div class="hop-chain dim wrap">
+                    @for (int i = 0; i < _connectivity.VisitOrder.Count; i++)
+                    {
+                        if (i > 0) { <span class="hop-arrow">›</span> }
+                        <span class="hop-chip sensor">@_connectivity.VisitOrder[i]</span>
+                    }
+                    @if (_connectivity.VisitOrder.Count == 0)
+                    {
+                        <span class="field-hint">Nothing reachable - the gateway itself is down.</span>
+                    }
+                </div>
+
+                @foreach (var d in _connectivity.Down)
+                {
+                    <div class="advice down">
+                        <div><strong>@d.Node.Label</strong> is down <span class="field-hint">(@d.Reason)</span></div>
+                        @if (d.Alternatives.Count == 0)
+                        {
+                            <div class="field-hint">No live neighbours - nothing can hop around it.</div>
+                        }
+                        else
+                        {
+                            <div class="field-hint">Traffic can hop to:</div>
+                            @foreach (var alt in d.Alternatives)
+                            {
+                                <div class="alt-row">
+                                    <span class="hop-chip sensor">@alt.Neighbour.Label</span>
+                                    <span class="field-hint">
+                                        @(alt.ReachesServer ? "→ " + string.Join(" → ", alt.PathToServer.Skip(1)) : "but it cannot reach the server either")
+                                    </span>
+                                </div>
+                            }
+                        }
+                    </div>
+                }
+
+                @foreach (var s in _connectivity.Stranded)
+                {
+                    <div class="advice stranded">
+                        <div><strong>@s.Node.Label</strong> lost its path through this gateway.</div>
+                        <div class="field-hint">
+                            @(s.RouteFound
+                                ? "Re-route: " + string.Join(" → ", s.BypassRoute)
+                                : "No alternative route - the node is isolated.")
+                        </div>
+                    </div>
+                }
+
+                @if (_connectivity.Down.Count == 0 && _connectivity.Stranded.Count == 0)
+                {
+                    <div class="field-hint" style="margin-top:10px;">All devices in this subnet are connected. Select a node on the map and choose “Simulate failure” to see failover.</div>
+                }
+            }
+        </section>
+    </div>
+
+    <!-- ============================== MST table ============================ -->
+    <section class="panel">
+        <div class="topo-head">
+            <h2>Minimum spanning tree · power-efficient routing</h2>
+            <span class="field-hint">Prim's algorithm rooted at the central server (min-heap of candidate links)</span>
+        </div>
+        <div class="mst-scroll">
+            <table class="table-simple">
+                <thead>
+                    <tr><th>#</th><th>Link</th><th>Cost</th></tr>
+                </thead>
+                <tbody>
+                    @{ int row = 0; }
+                    @foreach (var e in _topology.Edges.Where(x => x.InMst).OrderBy(x => x.Cost))
+                    {
+                        row++;
+                        <tr>
+                            <td>@row</td>
+                            <td>@LabelOf(e.From) <span class="hop-arrow">↔</span> @LabelOf(e.To)</td>
+                            <td>@N1(e.Cost)</td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td></td>
+                        <td><strong>Total (@_topology.MstLinkCount links)</strong></td>
+                        <td><strong>@N1(_topology.MstTotalCost)</strong></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </section>
+
+    <!-- ========================== Historical log ============================ -->
+    <section class="panel">
+        <div class="topo-head">
+            <h2>Historical telemetry log</h2>
+            <span class="field-hint">Range-queried from a per-sensor AVL tree keyed on timestamp</span>
+        </div>
+
+        <div class="topo-form wrap">
+            <div class="field">
+                <label>Sensor</label>
+                <select @bind="_historySensorId">
+                    @foreach (var s in SensorNodes)
+                    {
+                        <option value="@s.Id">@s.Label · @s.MacAddress</option>
+                    }
+                </select>
+            </div>
+            <div class="field">
+                <label>From (UTC)</label>
+                <input type="datetime-local" @bind="_from" />
+            </div>
+            <div class="field">
+                <label>To (UTC)</label>
+                <input type="datetime-local" @bind="_to" />
+            </div>
+            <div class="field" style="justify-content:flex-end;">
+                <button class="btn btn-sm btn-primary" @onclick="QueryHistoryAsync">Query range</button>
+            </div>
+        </div>
+        <div class="preset-row">
+            <span class="field-hint">Quick range:</span>
+            <button class="filter-chip" @onclick="() => SetPresetAsync(15)">Last 15 min</button>
+            <button class="filter-chip" @onclick="() => SetPresetAsync(60)">Last hour</button>
+            <button class="filter-chip" @onclick="() => SetPresetAsync(180)">Last 3 h</button>
+            <button class="filter-chip" @onclick="() => SetPresetAsync(360)">Last 6 h</button>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_historyError))
+        {
+            <div class="banner banner-error">@_historyError</div>
+        }
+
+        @if (_history is not null)
+        {
+            <div class="kpi-strip" style="margin-top:14px;">
+                <div class="kpi info">
+                    <div class="kpi-label">Readings in range</div>
+                    <div class="kpi-value">@_history.MatchCount</div>
+                    <div class="kpi-sub">of @_history.TreeSize stored</div>
+                </div>
+                <div class="kpi">
+                    <div class="kpi-label">Min</div>
+                    <div class="kpi-value">@Opt(_history.Min)</div>
+                    <div class="kpi-sub">@_history.Unit</div>
+                </div>
+                <div class="kpi">
+                    <div class="kpi-label">Average</div>
+                    <div class="kpi-value">@Opt(_history.Average)</div>
+                    <div class="kpi-sub">@_history.Unit</div>
+                </div>
+                <div class="kpi">
+                    <div class="kpi-label">Max</div>
+                    <div class="kpi-value">@Opt(_history.Max)</div>
+                    <div class="kpi-sub">@_history.Unit</div>
+                </div>
+            </div>
+
+            <div class="tree-note">
+                AVL tree: <b>@_history.TreeSize</b> readings, height <b>@_history.TreeHeight</b>.
+                This query touched <b>@_history.NodesVisited</b> tree nodes instead of scanning all @_history.TreeSize.
+                @if (_history.FirstReadingUtc is not null && _history.LastReadingUtc is not null)
+                {
+                    <span> Data available from @Stamp(_history.FirstReadingUtc.Value) to @Stamp(_history.LastReadingUtc.Value) UTC.</span>
+                }
+            </div>
+
+            @if (_history.Points.Count == 0)
+            {
+                <div class="empty-state" style="padding:22px; margin-top:12px;">
+                    No readings for @_history.Label between @Stamp(_history.FromUtc) and @Stamp(_history.ToUtc) UTC.
+                </div>
+            }
+            else
+            {
+                <svg class="history-spark" viewBox="0 0 600 70" preserveAspectRatio="none" aria-hidden="true">
+                    <polyline points="@SparkPoints()" />
+                </svg>
+
+                @if (_history.Truncated)
+                {
+                    <div class="field-hint">Showing the newest @_history.Points.Count of @_history.MatchCount readings.</div>
+                }
+
+                <div class="history-scroll">
+                    <table class="table-simple">
+                        <thead>
+                            <tr><th>Timestamp (UTC)</th><th>Value</th><th>Change</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var pt in _history.Points)
+                            {
+                                <tr>
+                                    <td><code class="inline">@Stamp(pt.TimestampUtc)</code></td>
+                                    <td>@N2(pt.Value) @_history.Unit</td>
+                                    <td class="@(pt.Delta > 0 ? "delta-up" : pt.Delta < 0 ? "delta-down" : "")">@(pt.Delta > 0 ? "+" : "")@N2(pt.Delta)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        }
+    </section>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "sensor")]
+    public string? SensorParam { get; set; }
+
+    private TopologyDto? _topology;
+    private RouteDto? _route;
+    private ConnectivityDto? _connectivity;
+    private HistoryQueryResultDto? _history;
+    private string? _historyError;
+    private string? _notice;
+
+    private readonly Dictionary<string, (double X, double Y)> _pos = new();
+    private readonly Dictionary<string, string> _labels = new();
+    private HashSet<string> _routeNodes = new();
+
+    private string _routeInput = string.Empty;
+    private string _tracedInput = string.Empty;
+    private string _routeMode = "mst";
+    private string _gatewayId = "SERVER";
+    private string _algorithm = "bfs";
+    private string? _selectedId;
+
+    private string _historySensorId = string.Empty;
+    private DateTime _from;
+    private DateTime _to;
+
+    private bool _apiOnline = true;
+    private bool _busy;
+    private bool _historyInitialised;
+    private PeriodicTimer? _timer;
+    private CancellationTokenSource? _cts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _to = TruncateToMinute(DateTime.UtcNow).AddMinutes(1);
+        _from = _to.AddHours(-1);
+
+        await RefreshAsync();
+
+        if (!string.IsNullOrWhiteSpace(SensorParam) && _topology?.Nodes.FirstOrDefault(n => n.Id == SensorParam) is { } linked)
+        {
+            _selectedId = linked.Id;
+            _routeInput = linked.MacAddress;
+            _historySensorId = linked.Id;
+            await TraceRouteAsync();
+            await QueryHistoryAsync();
+        }
+
+        _cts = new CancellationTokenSource();
+        _timer = new PeriodicTimer(TimeSpan.FromSeconds(3));
+        _ = PollLoopAsync(_cts.Token);
+    }
+
+    private async Task PollLoopAsync(CancellationToken token)
+    {
+        try
+        {
+            while (await _timer!.WaitForNextTickAsync(token))
+            {
+                await RefreshAsync();
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Page navigated away.
+        }
+    }
+
+    private async Task RefreshAsync()
+    {
+        try
+        {
+            var topology = await Api.GetTopologyAsync();
+            if (topology is null)
+            {
+                _apiOnline = false;
+                return;
+            }
+
+            _apiOnline = true;
+            _topology = topology;
+            BuildLayout(topology);
+
+            if (!_historyInitialised && topology.Nodes.Any(n => n.Kind == "Sensor"))
+            {
+                _historySensorId = string.IsNullOrEmpty(_historySensorId)
+                    ? topology.Nodes.First(n => n.Kind == "Sensor").Id
+                    : _historySensorId;
+                _historyInitialised = true;
+            }
+
+            // Keep the traced route and subnet report fresh as nodes fail / recover.
+            // (uses the last *traced* identifier, not whatever is half-typed in the box)
+            if (!string.IsNullOrWhiteSpace(_tracedInput)) _route = await Api.GetRouteAsync(_tracedInput, _routeMode);
+            _routeNodes = _route is { Found: true } ? _route.Hops.Select(h => h.Id).ToHashSet() : new HashSet<string>();
+            _connectivity = await Api.GetConnectivityAsync(_gatewayId, _algorithm);
+        }
+        catch (HttpRequestException)
+        {
+            _apiOnline = false;
+        }
+    }
+
+    private async Task ManualRefreshAsync()
+    {
+        _notice = null;
+        await RefreshAsync();
+    }
+
+    private async Task SeedDemoAsync()
+    {
+        _busy = true;
+        _notice = null;
+        try
+        {
+            var result = await Api.SeedDemoNetworkAsync();
+            _notice = result?.Message ?? "Could not load the demo network - is the API running?";
+            await RefreshAsync();
+
+            if (_topology is not null && string.IsNullOrEmpty(_historySensorId))
+            {
+                _historySensorId = _topology.Nodes.FirstOrDefault(n => n.Kind == "Sensor")?.Id ?? string.Empty;
+            }
+        }
+        catch (HttpRequestException)
+        {
+            _apiOnline = false;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    // ------------------------------------------------------------- selection
+
+    private TopologyNodeDto? SelectedNode => _topology?.Nodes.FirstOrDefault(n => n.Id == _selectedId);
+
+    private IEnumerable<TopologyNodeDto> SensorNodes =>
+        _topology?.Nodes.Where(n => n.Kind == "Sensor").OrderBy(n => n.Zone).ThenBy(n => n.Label)
+        ?? Enumerable.Empty<TopologyNodeDto>();
+
+    private IEnumerable<TopologyNodeDto> GatewayNodes =>
+        _topology?.Nodes.Where(n => n.Kind == "Gateway").OrderBy(n => n.Label)
+        ?? Enumerable.Empty<TopologyNodeDto>();
+
+    private async Task SelectNodeAsync(TopologyNodeDto node)
+    {
+        _selectedId = node.Id;
+        if (node.Kind == "Sensor")
+        {
+            _routeInput = node.MacAddress;
+            _historySensorId = node.Id;
+            await TraceRouteAsync();
+        }
+        else if (node.Kind == "Gateway")
+        {
+            _gatewayId = node.Id;
+            await LoadConnectivityAsync();
+        }
+    }
+
+    private async Task HandleRouteKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await TraceRouteAsync();
+    }
+
+    private async Task TraceRouteAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_routeInput))
+        {
+            _tracedInput = string.Empty;
+            _route = null;
+            _routeNodes = new HashSet<string>();
+            return;
+        }
+
+        _tracedInput = _routeInput.Trim();
+        _route = await Api.GetRouteAsync(_tracedInput, _routeMode);
+        _routeNodes = _route is { Found: true } ? _route.Hops.Select(h => h.Id).ToHashSet() : new HashSet<string>();
+
+        if (_route is { NodeId.Length: > 0 })
+        {
+            _selectedId = _route.NodeId;
+            if (_topology?.Nodes.Any(n => n.Id == _route.NodeId && n.Kind == "Sensor") == true)
+            {
+                _historySensorId = _route.NodeId;
+            }
+        }
+    }
+
+    private async Task LoadConnectivityAsync()
+    {
+        _connectivity = await Api.GetConnectivityAsync(_gatewayId, _algorithm);
+    }
+
+    private async Task SetDownAsync(TopologyNodeDto node, bool down)
+    {
+        await Api.SetNodeDownAsync(node.Id, down);
+        _notice = null;
+        await RefreshAsync();
+    }
+
+    // --------------------------------------------------------------- history
+
+    private async Task SetPresetAsync(int minutes)
+    {
+        _to = TruncateToMinute(DateTime.UtcNow).AddMinutes(1);
+        _from = _to.AddMinutes(-minutes);
+        await QueryHistoryAsync();
+    }
+
+    private async Task QueryHistoryAsync()
+    {
+        _historyError = null;
+        if (string.IsNullOrEmpty(_historySensorId))
+        {
+            _historyError = "Choose a sensor first.";
+            return;
+        }
+        if (_from > _to)
+        {
+            _historyError = "The start of the range must be before the end.";
+            return;
+        }
+
+        var fromUtc = new DateTimeOffset(DateTime.SpecifyKind(_from, DateTimeKind.Utc));
+        var toUtc = new DateTimeOffset(DateTime.SpecifyKind(_to, DateTimeKind.Utc));
+        var (result, error) = await Api.QueryHistoryAsync(_historySensorId, fromUtc, toUtc, take: 300);
+
+        if (result is null)
+        {
+            _history = null;
+            _historyError = error ?? "The history query failed.";
+            return;
+        }
+        _history = result;
+    }
+
+    // ---------------------------------------------------------------- layout
+
+    /// <summary>
+    /// Server in the middle, one gateway per zone on a ring around it, and each
+    /// zone's sensors fanned out beyond their gateway.
+    /// </summary>
+    private void BuildLayout(TopologyDto topology)
+    {
+        _pos.Clear();
+        _labels.Clear();
+        foreach (var n in topology.Nodes) _labels[n.Id] = n.Label;
+
+        const double cx = 450, cy = 300, ringRadius = 150;
+        var server = topology.Nodes.FirstOrDefault(n => n.Kind == "Server");
+        if (server is not null) _pos[server.Id] = (cx, cy);
+
+        var gateways = topology.Nodes.Where(n => n.Kind == "Gateway").OrderBy(n => n.Id, StringComparer.Ordinal).ToList();
+        for (int g = 0; g < gateways.Count; g++)
+        {
+            double angle = -Math.PI / 2 + g * 2 * Math.PI / Math.Max(1, gateways.Count);
+            var gw = gateways[g];
+            double gx = cx + ringRadius * Math.Cos(angle);
+            double gy = cy + ringRadius * Math.Sin(angle);
+            _pos[gw.Id] = (gx, gy);
+
+            var sensors = topology.Nodes
+                .Where(n => n.Kind == "Sensor" && string.Equals(n.Zone, gw.Zone, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(n => n.Label, StringComparer.Ordinal)
+                .ToList();
+
+            double step = Math.Min(0.6, 3.0 / Math.Max(1, sensors.Count - 1));
+            for (int k = 0; k < sensors.Count; k++)
+            {
+                double theta = angle + (k - (sensors.Count - 1) / 2.0) * step;
+                double radius = 100 + (k % 2) * 38;
+                _pos[sensors[k].Id] = (gx + radius * Math.Cos(theta), gy + radius * Math.Sin(theta));
+            }
+        }
+    }
+
+    // --------------------------------------------------------------- helpers
+
+    private double Savings => _topology is { ActiveLinkCost: > 0 }
+        ? Math.Max(0, (1 - _topology.MstTotalCost / _topology.ActiveLinkCost) * 100)
+        : 0;
+
+    private bool IsRouteEdge(TopologyEdgeDto e)
+    {
+        if (_route is not { Found: true } || _route.Hops.Count < 2) return false;
+        for (int i = 1; i < _route.Hops.Count; i++)
+        {
+            string a = _route.Hops[i - 1].Id, b = _route.Hops[i].Id;
+            if ((e.From == a && e.To == b) || (e.From == b && e.To == a)) return true;
+        }
+        return false;
+    }
+
+    private string EdgeClass(TopologyEdgeDto e)
+    {
+        if (!e.Active) return "down";
+        if (IsRouteEdge(e)) return "route";
+        return e.InMst ? "mst" : "";
+    }
+
+    private string NodeClass(TopologyNodeDto n)
+    {
+        string state = !n.Online ? "is-down" : n.Isolated ? "is-isolated" : "is-up";
+        string onRoute = _routeNodes.Contains(n.Id) ? " on-route" : "";
+        return $"{n.Kind.ToLowerInvariant()} {state}{onRoute}";
+    }
+
+    private static double Radius(TopologyNodeDto n) => n.Kind switch
+    {
+        "Server" => 22,
+        "Gateway" => 15,
+        _ => 10
+    };
+
+    private static string ShortLabel(TopologyNodeDto n) =>
+        n.Kind == "Gateway" ? n.Zone : n.Kind == "Server" ? "Server" : n.Label.Replace("ESP32-", "");
+
+    private static string NodeTitle(TopologyNodeDto n)
+    {
+        string status = !n.Online ? $"DOWN ({n.DownReason})" : n.Isolated ? "ISOLATED" : "online";
+        string mac = string.IsNullOrEmpty(n.MacAddress) ? "" : $" · {n.MacAddress}";
+        return $"{n.Label}{mac} · {status}";
+    }
+
+    private string LabelOf(string id) => _labels.GetValueOrDefault(id, id);
+
+    private string SparkPoints()
+    {
+        if (_history is null || _history.Points.Count < 2) return string.Empty;
+
+        var values = _history.Points.AsEnumerable().Reverse().Select(p => p.Value).ToList();
+        double min = values.Min(), max = values.Max();
+        double span = Math.Max(1e-9, max - min);
+        var pts = values.Select((v, i) =>
+            $"{F(i * 600.0 / (values.Count - 1))},{F(64 - (v - min) / span * 58)}");
+        return string.Join(" ", pts);
+    }
+
+    private static DateTime TruncateToMinute(DateTime dt) =>
+        new(dt.Year, dt.Month, dt.Day, dt.Hour, dt.Minute, 0, DateTimeKind.Utc);
+
+    // Invariant culture everywhere: SVG attributes must use '.' decimals even on a ',' locale (e.g. en-ZA).
+    private static string F(double v) => v.ToString("0.#", CultureInfo.InvariantCulture);
+    private static string N1(double v) => v.ToString("0.0", CultureInfo.InvariantCulture);
+    private static string N2(double v) => v.ToString("0.00", CultureInfo.InvariantCulture);
+    private static string Opt(double? v) => v.HasValue ? N2(v.Value) : "—";
+    private static string Stamp(DateTimeOffset t) => t.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
+
+    public async ValueTask DisposeAsync()
+    {
+        _cts?.Cancel();
+        _timer?.Dispose();
+        _cts?.Dispose();
+        await Task.CompletedTask;
+    }
+}
