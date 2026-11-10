@@ -101,6 +101,8 @@
                             Send as Critical (jumps the queue)
                         </label>
 
+                        <a class="btn btn-sm btn-ghost" style="align-self:flex-start;" href="topology?sensor=@d.SensorId">Route &amp; history &rarr;</a>
+
                         <button class="btn btn-sm" style="align-self:flex-start;" @onclick="() => ToggleTimeline(d.SensorId)">
                             @(_expandedTimelineSensorId == d.SensorId ? "Hide" : "View") timeline
                         </button>

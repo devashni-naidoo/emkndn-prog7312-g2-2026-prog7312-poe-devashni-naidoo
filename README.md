@@ -1,452 +1,362 @@
-# Smart-X
+# Smart-X — Parts 1–3: Ingestion Gateway, Command Stream + Network Topology
 
-### Intelligent IoT Ingestion, Telemetry & Real-Time Command Management
+PROG7312 POE. A .NET 8 solution implementing:
 
-Smart-X is a .NET 8 Internet of Things (IoT) platform designed to monitor, process and manage telemetry from distributed environments. Built around a central ingestion gateway and a real-time command stream, the platform demonstrates how connected devices can be monitored, validated and managed through a unified application.
+- **Part 1**: the Smart-X sensor ingestion API and a Blazor client-facing
+  configuration dashboard, built around four required C# language features
+  (generics, operator overloading, advanced arrays/lists, recursion) plus the
+  dashboard engagement strategy selected in the Task 1 research report
+  (real-time visual telemetry feedback with threshold-based anomaly
+  highlighting).
+- **Part 2**: a Real-Time Command Stream & History page backed by SignalR,
+  built around five more required data structures (`Queue<T>`,
+  `PriorityQueue<T,TPriority>`, `Stack<T>`, `Dictionary<TKey,TValue>`,
+  `SortedDictionary<TKey,TValue>`, `HashSet<T>`), plus an Automated Action
+  Engine that learns from historical alert/command patterns and suggests
+  responses.
 
-The system is designed for environments such as hydroponic farms, automated utility trackers, smart buildings and smart grid installations, where large numbers of microcontrollers continuously publish data in different formats.
+- **Part 3 (final)**: a **Network Topology & Mesh Routing** page that models the
+  IoT mesh as a weighted graph (BFS/DFS connectivity + failover, Prim's
+  minimum spanning tree for power-efficient routing) and serves a sensor's
+  historical telemetry from a per-sensor **AVL tree** for fast time-range
+  queries. All three menu options are now live and cross-linked.
 
-**Project:** PROG7312 Portfolio of Evidence — Parts 1 & 2
-**Framework:** .NET 8
-**Architecture:** ASP.NET Core Web API, Blazor Web App and shared class library
-**Real-time communication:** SignalR
-**Deployment:** Local development and Docker Compose
+## Solution layout
 
----
-
-## Overview
-
-Smart-X combines two complementary capabilities: sensor data ingestion and real-time command management.
-
-### Part 1 — Sensor Ingestion & Telemetry
-
-The ingestion gateway receives and validates sensor information, manages device registrations, processes telemetry and identifies unusual readings. The Blazor dashboard provides visual feedback through live readings, trend sparklines, percentage changes and threshold-based anomaly highlighting.
-
-### Part 2 — Real-Time Command Stream & History
-
-The command management layer introduces device overrides, prioritised command processing, command history, alert deduplication and timestamp-ordered sensor logs. SignalR pushes command and alert updates to the client, while the Automated Action Engine analyses historical patterns to recommend responses to recurring alerts.
-
-## Key capabilities
-
-- **Sensor registration:** Register devices with hierarchical facility, zone, sub-zone and node information.
-- **Telemetry ingestion:** Accept single readings and batches containing multiple data types.
-- **Anomaly monitoring:** Highlight unusual readings against a sensor's recent baseline.
-- **Live dashboard:** View simulated sensor readings, trends, deltas and connection status.
-- **Device commands:** Issue manual overrides for supported devices.
-- **Priority processing:** Route critical commands through a dedicated priority queue.
-- **Command history:** Undo supported commands by issuing their inverse operations.
-- **Real-time updates:** Deliver command and alert events through SignalR.
-- **Predictive suggestions:** Identify recurring alert-command patterns and suggest possible responses.
-- **Sensor attachments:** Upload and retrieve device-related configuration files, photos and logs.
-
----
-
-## Technology stack
-
-| Component               | Technology                | Responsibility                                                            |
-| ----------------------- | ------------------------- | ------------------------------------------------------------------------- |
-| Shared library          | C# / .NET 8               | Domain models, DTOs, validation, telemetry operations and data structures |
-| Backend API             | ASP.NET Core Web API      | Sensor registration, ingestion, anomaly processing, uploads and commands  |
-| Client application      | Blazor Web App            | Configuration, telemetry visualisation and command management             |
-| Real-time communication | SignalR                   | Push command and alert updates to connected clients                       |
-| Background processing   | .NET hosted service       | Process standard and critical command queues                              |
-| Testing                 | .NET console test project | Verify required language features and data structures                     |
-| Containerisation        | Docker Compose            | Run the API and client together                                           |
-
-The solution uses the .NET shared framework and project references for its core functionality. The current implementation does not require an external database or third-party NuGet package for its main application flow.
-
----
-
-## Architecture
-
-The application is organised into three main projects.
-
-```text
-SmartX/
-├── SmartX.sln
-├── NuGet.Config
-├── docker-compose.yml
-│
-├── src/
-│   ├── SmartX.Shared/
-│   │   ├── Telemetry/
-│   │   ├── Validation/
-│   │   └── DataStructures/
-│   │
-│   ├── SmartX.Api/
-│   │   ├── Controllers/
-│   │   ├── Services/
-│   │   ├── Hubs/
-│   │   └── App_Data/
-│   │
-│   └── SmartX.Client/
-│       ├── Components/
-│       │   └── Pages/
-│       └── wwwroot/
-│           └── js/
-│
-└── tests/
-    └── SmartX.Tests/
+```
+SmartX.sln
+NuGet.Config              <- see "A note on how this was built" below
+docker-compose.yml
+src/
+  SmartX.Shared/          Class library: models, DTOs, and the four required
+                           C# language features (generics, operator overload,
+                           arrays/lists, recursion)
+  SmartX.Api/              ASP.NET Core Web API (Controllers) — ingestion,
+                           validation, anomaly engine, file uploads
+  SmartX.Client/           Blazor Web App (Server interactivity) — landing
+                           page, sensor registration, telemetry dashboard
+tests/
+  SmartX.Tests/            Dependency-free console test project that verifies
+                           every required language feature against real
+                           production code (see "Verifying it works" below)
 ```
 
-### SmartX.Shared
-
-Contains reusable models, data-transfer objects, validation logic and data structures. Both the API and other projects can reference this library without duplicating core logic.
-
-### SmartX.Api
-
-Provides the backend services for sensor registration, telemetry ingestion, anomaly detection, file uploads, command execution, historical records and predictive insights.
-
-### SmartX.Client
-
-Provides the Blazor user interface, including the overview page, sensor registration, telemetry dashboard and real-time command stream.
-
-### SmartX.Tests
-
-A dependency-free console application that executes checks against the actual shared production code, covering the required language features and data structures.
-
----
-
-## Part 1 — Sensor Ingestion & Telemetry
-
-### Sensor registration and validation
-
-Devices are registered using a MAC address, category and hierarchical deployment information. The API constructs a deployment tree and validates the structure recursively before accepting the registration.
-
-The validation process checks for missing hierarchy levels, incorrect nesting and incomplete branches.
-
-### Telemetry processing
-
-Smart-X supports telemetry values represented by different C# types, including:
-
-- Floating-point measurements, such as soil moisture.
-- Integer measurements, such as power wattage.
-- Boolean values, such as valve or relay states.
-
-The ingestion API supports individual readings and batch submissions. The telemetry service maintains current snapshots and recent history for dashboard visualisation.
-
-### Real-time dashboard
-
-The telemetry dashboard provides visual feedback about sensor activity. Users can start or stop simulated readings without physical microcontroller hardware.
-
-Dashboard features include:
-
-- Live sensor values and trend sparklines.
-- Percentage changes relative to recent readings.
-- Visual anomaly highlighting.
-- Connection status and stale-reading indicators.
-- Aggregated power-meter readings using overloaded operators.
-
-The anomaly feedback approach supports the dashboard engagement strategy investigated for Part 1 by making changes in telemetry visible to users.
-
-### Sensor attachments
-
-Users can upload device-related configuration files, photos and logs. The API accepts multipart uploads and stores files under the relevant sensor's upload directory.
-
----
-
-## Part 2 — Real-Time Command Stream & History
-
-### Command processing
-
-The command stream allows users to search for devices, inspect alert states and issue supported manual overrides.
-
-Actuator-category devices support commands such as:
-
-- Toggle Relay
-- Trigger Pump / Stop Pump
-- Open Valve / Shut Valve
-
-Other device categories support Reset Sensor.
-
-Commands can be submitted through either the standard FIFO queue or the dedicated critical-alert priority queue.
-
-### Live updates with SignalR
-
-The API exposes a SignalR hub that publishes command and alert events to connected clients. The Command Stream page receives those events through JavaScript interop, allowing the live feed to update without repeatedly polling the API for new events.
-
-### Command history and undo
-
-Executed commands are tracked in a history stack. The user can undo the most recent supported command by removing it from the stack and issuing the corresponding inverse operation.
-
-### Automated Action Engine
-
-The Automated Action Engine tracks recurring alert-command patterns. When similar events occur repeatedly, the application can suggest a previously used response, show its occurrence count and allow the user to apply the suggestion.
-
-These recommendations are based on observed historical patterns; they are not a guarantee that the suggested action is appropriate for every future event.
-
-### Sensor timelines
-
-Each device can expose a timestamp-ordered history of sensor logs. The timeline allows users to review recorded activity in chronological order.
-
----
-
-## Required C# language features and data structures
-
-The following table maps the assessed programming requirements to the production implementation.
-
-### Part 1 — Language features
-
-| Requirement             | Implementation                                               | Location                                            |
-| ----------------------- | ------------------------------------------------------------ | --------------------------------------------------- |
-| Generics                | `TelemetryPacket<T>`                                         | `SmartX.Shared/Telemetry/TelemetryPacket.cs`        |
-| Operator overloading    | Arithmetic and comparison operators for power-meter readings | `SmartX.Shared/Telemetry/PowerMeterReading.cs`      |
-| Jagged arrays and lists | Batch telemetry history and conversion to `List<T>`          | `SmartX.Shared/Telemetry/TelemetryHistoryBuffer.cs` |
-| Multidimensional arrays | Zone-by-hour load matrix                                     | `SmartX.Shared/Telemetry/ZoneLoadMatrix.cs`         |
-| Recursion               | Hierarchical deployment-tree validation                      | `SmartX.Shared/Validation/DeploymentValidator.cs`   |
-
-Additional Part 1 services:
-
-| Component                                    | Location                                                   |
-| -------------------------------------------- | ---------------------------------------------------------- |
-| Telemetry storage and anomaly processing     | `SmartX.Api/Services/TelemetryStore.cs`                    |
-| Sensor registration and recursive validation | `SmartX.Api/Services/SensorRegistry.cs`                    |
-| Multipart upload endpoint                    | `SmartX.Api/Controllers/SensorsController.cs`              |
-| Power-meter aggregation endpoint             | `SmartX.Api/Controllers/TelemetryController.cs`            |
-| Telemetry dashboard                          | `SmartX.Client/Components/Pages/Telemetry/Dashboard.razor` |
-| Overview page                                | `SmartX.Client/Components/Pages/Home.razor`                |
-
-### Part 2 — Data structures
-
-| Data structure                   | Purpose                                        | Implementation           |
-| -------------------------------- | ---------------------------------------------- | ------------------------ |
-| `Queue<T>`                       | FIFO processing of standard commands           | `CommandQueue.cs`        |
-| `PriorityQueue<T, long>`         | Priority-based processing of critical commands | `CriticalAlertQueue.cs`  |
-| `Stack<T>`                       | Command history and undo                       | `CommandHistoryStack.cs` |
-| `Dictionary<TKey, TValue>`       | Fast device lookup by MAC address              | `DeviceIndex.cs`         |
-| `SortedDictionary<TKey, TValue>` | Timestamp-ordered sensor log timeline          | `SensorLogTimeline.cs`   |
-| `HashSet<T>`                     | Deduplication of active alerts                 | `ActiveAlertSet.cs`      |
-
-Additional Part 2 components:
-
-| Component                     | Location                                                      |
-| ----------------------------- | ------------------------------------------------------------- |
-| Pattern frequency tracking    | `SmartX.Shared/DataStructures/PatternFrequencyTracker.cs`     |
-| Predictive insight service    | `SmartX.Api/Services/PredictiveInsightService.cs`             |
-| Background command processor  | `SmartX.Api/Services/CommandProcessorWorker.cs`               |
-| SignalR command hub           | `SmartX.Api/Hubs/CommandHub.cs`                               |
-| Device search and filtering   | `SmartX.Api/Controllers/SensorsController.cs`                 |
-| Real-Time Command Stream page | `SmartX.Client/Components/Pages/Commands/CommandStream.razor` |
-| SignalR JavaScript interop    | `SmartX.Client/wwwroot/js/commandHub.js`                      |
-
----
-
-## Getting started
-
-### Prerequisites
-
-Install the following before running the solution:
+## Prerequisites
 
 - [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
-- Git, if cloning the repository
-- Docker Desktop with Docker Compose, if using the containerised setup
+- (Optional) Docker + Docker Compose, if you want to run it containerised
+- Normal internet access for `dotnet restore` — see the note below about how
+  this was actually built
 
-### 1. Clone the repository
+## A note on how this was built
 
-```bash
-git clone https://github.com/devashni-naidoo/emkndn-prog7312-g2-2026-prog7312-poe-devashni-naidoo
-```
+This solution was built and verified in a sandboxed environment with **no
+NuGet network access** (only a small allow-list of domains, none of them
+`nuget.org`). To get a working build there:
 
-### 2. Restore and build
+- `NuGet.Config` at the solution root clears all package sources
+  (`<clear />`), so restore resolves everything from the .NET SDK's local
+  targeting packs instead of hitting the network.
+- **Swagger/OpenAPI (Swashbuckle) was deliberately left out** of
+  `SmartX.Api` because it's a NuGet package that couldn't be restored there.
+  Every single project reference in this solution is either project-to-
+  project or part of the ASP.NET Core / .NET shared framework — zero
+  external NuGet packages, by necessity, not by design preference.
+- `tests/SmartX.Tests` is a plain console app with a ~20-line hand-rolled
+  `Check` assertion helper instead of xUnit/NUnit, for the same reason.
 
-From the solution root, run:
-
-```bash
-dotnet restore SmartX.sln
-dotnet build SmartX.sln
-```
-
-The root `NuGet.Config` currently clears all package sources. This configuration was used to support a restricted build environment and assumes the projects can restore from locally available .NET targeting packs.
-
-If your environment needs to restore additional NuGet packages, review `NuGet.Config` and add the required package sources before restoring. Do not remove the configuration without checking whether any projects depend on its current settings.
-
-### 3. Run the API
-
-Open a terminal at the repository root:
-
-```bash
-dotnet run --project src/SmartX.Api/SmartX.Api.csproj --urls http://localhost:5080
-```
-
-The API will be available at:
-
-`http://localhost:5080`
-
-### 4. Run the Blazor client
-
-Open a second terminal at the repository root:
+**On your own machine, with normal internet access, none of this matters** —
+`dotnet restore` will just work, and you're welcome to delete `NuGet.Config`
+entirely, or add packages back in, e.g.:
 
 ```bash
-dotnet run --project src/SmartX.Client/SmartX.Client.csproj --urls http://localhost:5210
+dotnet add src/SmartX.Api package Swashbuckle.AspNetCore
 ```
 
-Open the client in your browser:
+then uncomment the four commented-out lines in `src/SmartX.Api/Program.cs` to
+get Swagger UI back at `/swagger`.
 
-`http://localhost:5210`
+## Running locally (no Docker)
 
-The client is configured to communicate with the API at `http://localhost:5080`. The API's CORS configuration must allow the client origin for browser requests to succeed.
+Open **two terminals**.
 
-### 5. Run with Docker Compose
+**Terminal 1 — the API:**
+```bash
+cd src/SmartX.Api
+dotnet run --urls http://localhost:5080
+```
 
-If Docker is configured, start the application from the solution root:
+**Terminal 2 — the client:**
+```bash
+cd src/SmartX.Client
+dotnet run --urls http://localhost:5210
+```
+
+Then open **http://localhost:5210** in a browser. The client is pre-configured
+(via `appsettings.json` → `ApiBaseUrl`) to talk to the API at
+`http://localhost:5080`, and the API's CORS policy (via `appsettings.json` →
+`Cors:AllowedOrigins`) already allows `http://localhost:5210`, so this works
+out of the box.
+
+## Running with Docker Compose
 
 ```bash
 docker compose up --build
 ```
 
-Expected endpoints:
+- API: http://localhost:5080
+- Client: http://localhost:5210
 
-| Service       | URL                     |
-| ------------- | ----------------------- |
-| Blazor client | `http://localhost:5210` |
-| API           | `http://localhost:5080` |
+`docker-compose.yml` wires the client's `ApiBaseUrl` to the API's internal
+Docker network address (`http://smartx-api:8080`) and adds the client's
+public origin to the API's CORS allow-list automatically. Uploaded
+attachments persist in the `smartx-api-data` named volume.
 
-The Compose configuration uses the API's internal container address for client-to-API configuration and includes persistent storage for uploaded attachments.
+## Using the app
 
-The containerised setup should be tested on the target machine before relying on it for a demonstration.
+1. Open the client — you'll land on the **Overview** page showing the three
+   Smart-X architectural pillars. Only "Sensor Data Ingestion & Telemetry" is
+   active for this PoE part; the other two are visibly disabled/locked.
+2. Go to **Register Sensor**. Fill in a MAC address (`AA:BB:CC:DD:EE:01`
+   format), a Facility / Zone / Sub-Zone / Node ID, and a category. Submitting
+   sends the flat form to the API, which builds a nested deployment tree and
+   **recursively validates** it (`SmartX.Shared.Validation.DeploymentValidator`)
+   before accepting the sensor — try leaving Sub-Zone blank to see it reject
+   the registration.
+3. Once registered, you can attach a config file / photo / log via the file
+   picker that appears — this streams a multipart upload straight to disk on
+   the API side (`App_Data/uploads/{sensorId}/...`).
+4. Go to **Telemetry Dashboard**. Click **▶ Start** next to a sensor to begin
+   simulated live readings (no physical hardware needed for grading/demo
+   purposes) — a card appears showing the live value, a trend sparkline, a
+   percentage delta indicator, and a status badge that turns amber/red when a
+   reading deviates sharply from its own recent baseline (this is the
+   engagement strategy justified in the Task 1 report). Leave two sensors
+   running for a bit and use the **aggregate** control to see
+   `Meter3 = Meter1 + Meter2` computed via the overloaded `+` operator.
+5. Stop a sensor's simulation and wait ~15 seconds — its card greys out and
+   shows "No telemetry for Ns", demonstrating the disconnect-handling half of
+   the engagement strategy.
 
----
+## Where each technical requirement lives
 
-## Using the application
+### Part 1
 
-### Part 1 workflow
+| Requirement | File |
+|---|---|
+| Generic wrapper `TelemetryPacket<T>` | `src/SmartX.Shared/Telemetry/TelemetryPacket.cs` |
+| Operator overloading (`+`, `-`, `>`, `<`, `==`, `!=`) | `src/SmartX.Shared/Telemetry/PowerMeterReading.cs` |
+| Jagged array batch history → `List<T>` | `src/SmartX.Shared/Telemetry/TelemetryHistoryBuffer.cs` |
+| Multi-dimensional array (zone × hour load) | `src/SmartX.Shared/Telemetry/ZoneLoadMatrix.cs` |
+| Recursive deployment-tree validation | `src/SmartX.Shared/Validation/DeploymentValidator.cs` |
+| API ingestion / anomaly engine | `src/SmartX.Api/Services/TelemetryStore.cs` |
+| Recursive validation wired into registration | `src/SmartX.Api/Services/SensorRegistry.cs` |
+| Multipart file upload | `src/SmartX.Api/Controllers/SensorsController.cs` (`UploadMedia`) |
+| Operator-overload demo endpoint | `src/SmartX.Api/Controllers/TelemetryController.cs` (`AggregateMeters`) |
+| Dashboard engagement strategy (sparklines, delta, colour coding) | `src/SmartX.Client/Components/Pages/Telemetry/Dashboard.razor` |
+| Three-pillar startup interface | `src/SmartX.Client/Components/Pages/Home.razor` |
 
-1. Open the client and explore the Overview page.
-2. Navigate to **Register Sensor**.
-3. Enter a valid MAC address, device category and deployment hierarchy.
-4. Submit the registration and observe the validation response.
-5. Upload an optional configuration file, image or log.
-6. Open **Telemetry Dashboard** and start simulated readings for a registered sensor.
-7. Observe the live values, sparkline, percentage delta and anomaly indicators.
-8. Run two sensors and use the aggregate control to demonstrate the overloaded power-meter addition operator.
-9. Stop a sensor simulation and observe the stale-telemetry or disconnected state after the configured timeout.
+### Part 2
 
-### Part 2 workflow
+| Requirement | File |
+|---|---|
+| Message Queue (`Queue<T>`, FIFO) | `src/SmartX.Shared/DataStructures/CommandQueue.cs` |
+| Priority Queue (`PriorityQueue<T,long>`, critical bypass) | `src/SmartX.Shared/DataStructures/CriticalAlertQueue.cs` |
+| Stack (`Stack<T>`, Undo) | `src/SmartX.Shared/DataStructures/CommandHistoryStack.cs` |
+| Dictionary (`Dictionary<string,DeviceProfile>`, O(1) MAC lookup) | `src/SmartX.Shared/DataStructures/DeviceIndex.cs` |
+| Sorted Dictionary (`SortedDictionary`, timestamp-ordered timeline) | `src/SmartX.Shared/DataStructures/SensorLogTimeline.cs` |
+| Hash Set (`HashSet<string>`, alert deduplication) | `src/SmartX.Shared/DataStructures/ActiveAlertSet.cs` |
+| Automated Action Engine (pattern frequency analysis) | `src/SmartX.Shared/DataStructures/PatternFrequencyTracker.cs`, `src/SmartX.Api/Services/PredictiveInsightService.cs` |
+| Background command processor (drains both queues) | `src/SmartX.Api/Services/CommandProcessorWorker.cs` |
+| SignalR hub (live push to dashboard) | `src/SmartX.Api/Hubs/CommandHub.cs` |
+| Search/filter by category + alert state | `src/SmartX.Api/Controllers/SensorsController.cs` (`Search`) |
+| Real-Time Command Stream page (UI) | `src/SmartX.Client/Components/Pages/Commands/CommandStream.razor` |
+| SignalR JS interop (vendored, no NuGet needed) | `src/SmartX.Client/wwwroot/js/commandHub.js`, `signalr.min.js` |
 
-1. Open **Command Stream**.
-2. Search or filter devices by node, MAC address, zone, category or alert state.
-3. Select a supported manual command for a device.
-4. Enable **Send as Critical** to submit the command through the priority queue.
-5. Observe command execution and alert updates in the live feed.
-6. Use **Undo last command** to reverse the most recent supported command.
-7. Generate recurring alert-command patterns and inspect the **Suggested Actions** panel.
-8. Apply a suggested action and inspect the recorded occurrence count.
-9. Open a device's timeline to review timestamp-ordered sensor logs.
+### Part 3
 
----
+| Requirement | File |
+|---|---|
+| Binary Search Tree → **AVL tree** (rotations, balance factors, O(log n + k) range query) | `src/SmartX.Shared/DataStructures/AvlTree.cs` |
+| Historical, timestamped telemetry per sensor (one AVL tree each, keyed on timestamp) | `src/SmartX.Shared/DataStructures/TelemetryHistoryIndex.cs` |
+| Every ingested reading is appended to the history trees | `src/SmartX.Api/Services/TelemetryStore.cs` |
+| Heap (array-backed binary min-heap) | `src/SmartX.Shared/DataStructures/MinHeap.cs` |
+| Graph (adjacency list: sensors = vertices, wireless links = weighted edges) | `src/SmartX.Shared/DataStructures/MeshGraph.cs` |
+| BFS + DFS traversal (connected devices, fewest-hop failover routes) | `MeshGraph.Bfs`, `MeshGraph.Dfs`, `MeshGraph.ShortestHopPath` |
+| Minimum Spanning Tree — **Prim's** (uses `MinHeap`); Kruskal's kept as an independent cross-check | `MeshGraph.Prim`, `MeshGraph.Kruskal` |
+| Mesh construction, failure handling, route tracing, history queries, demo seeding | `src/SmartX.Api/Services/TopologyService.cs` |
+| REST endpoints | `src/SmartX.Api/Controllers/TopologyController.cs`, `TelemetryController.cs` (`{sensorId}/history`) |
+| Network Topology & Mesh Routing page (UI) | `src/SmartX.Client/Components/Pages/Topology/NetworkTopology.razor`, `wwwroot/topology.css` |
 
-## Testing and verification
+How the mesh is modelled: the ESP32 simulator has no radio, so links are
+*simulated* deterministically from the registered sensors — each zone gets a
+gateway wired to the central server, each sensor links to its zone gateway and
+to its nearest neighbours in registration order, and adjacent zones are
+bridged by one cross-zone link. A link's cost is its relative transmit energy
+per packet (derived from a stable hash of the MAC addresses, so the same
+network always yields the same graph). A node is **down** when an operator
+marks it down on the page, or when its telemetry has been silent for 15 s.
 
-The `SmartX.Tests` project is a dependency-free console test suite that exercises the shared production code.
+## Using the Part 3 Network Topology page
 
-The documented test coverage includes:
+1. Open **Network Topology**. If you have no sensors yet, press **Load demo
+   network**: it registers 10 sensors in 3 zones, back-fills six hours of
+   history into the AVL trees, and starts live simulation.
+2. **Mesh map** — the central server, zone gateways and sensors, with the
+   minimum spanning tree highlighted. The KPI strip shows how much power the
+   MST saves versus letting every link transmit.
+3. **Route tracker** — type a MAC address or Node ID (or click a node on the
+   map) to see its path to the server, hop by hop with per-link cost. Switch
+   between *power-efficient (Prim's MST)* and *fewest hops (BFS)*.
+4. **Failure demo** — select a node and press **Simulate failure** (or stop
+   its simulation on the Telemetry Dashboard and wait ~15 s). The map turns the
+   node red, the MST is recomputed, the traced route reroutes, and
+   **Connectivity & failover** lists which devices are down and which
+   neighbours traffic can hop to instead. Pick a gateway and BFS or DFS to see
+   the visit order for that subnet. Press **Restore node** to heal it.
+5. **Historical telemetry log** — choose a sensor and a UTC time range (or a
+   quick range) to query its AVL tree. The page reports how many tree nodes
+   the query touched versus how many readings are stored, to show the range
+   query isn't scanning an unordered list.
+6. The Telemetry Dashboard and Command Stream device cards both link straight
+   into this page for that sensor (**Route & history →**).
 
-- Generic telemetry wrappers.
-- Operator overloading.
-- Jagged-array history and ring-buffer eviction.
-- Multidimensional load matrices.
-- Recursive deployment validation.
-- Standard and priority queues.
-- Command history stacks.
-- Device indexing and alert deduplication.
-- Timestamp-ordered sensor timelines.
-- Pattern frequency tracking.
+## Using the Part 2 Command Stream
 
-Run the test suite from the solution root:
+1. Go to **Command Stream** in the sidebar (or Pillar 2 on the Overview page).
+2. Search/filter devices by free text (node/MAC/zone), category, or active
+   alert state.
+3. Issue a manual override (Toggle Relay, Trigger/Stop Pump, Open/Shut Valve
+   for Actuator-category devices; Reset Sensor for others). Tick **Send as
+   Critical** to route it through the priority queue instead of the standard
+   FIFO queue — critical commands are always drained first by the background
+   `CommandProcessorWorker`.
+4. Watch the **Live Feed** panel update in real time via SignalR as commands
+   execute and alerts raise/clear — this isn't polling, it's a genuine push
+   from `CommandHub` on the API straight to the browser.
+5. Click **Undo last command** to pop the command history stack and
+   automatically re-issue its inverse (e.g. undoing a Shut Valve re-opens it).
+6. Go to the **Telemetry Dashboard** and start a sensor's simulation so it
+   spikes into an Anomalous state, then issue the same command against it a
+   couple of times — the **Suggested Actions** panel on the Command Stream
+   page will start recommending that command for similar future alerts, with
+   an occurrence count and a one-click **Apply** button.
+7. Click **View timeline** on any device card to see its
+   `SortedDictionary`-backed, timestamp-ordered history.
+
+## Verifying it works
+
+Since no NuGet-based test framework could be restored in the sandbox this was
+built in, `tests/SmartX.Tests` is a small console project with a hand-rolled
+assertion helper (`Check.cs`) that exercises the real production code in
+`SmartX.Shared` — 65 checks covering generics, operator overloading, jagged
+arrays (including ring-buffer eviction), the multi-dimensional load matrix,
+recursive validation (valid trees, missing tiers, wrong nesting order,
+incomplete branches, and multi-branch trees), and all five Part 2 data
+structures including deterministic proof that the priority queue really does
+dequeue by issue-time regardless of enqueue order (something a live timing-based
+demo can't reliably show, since the background worker drains so fast there's
+rarely a real backlog to observe). Part 3 adds checks for the AVL tree
+(balance invariants after sorted and shuffled inserts, range queries compared
+against a brute-force scan), the timestamp history index (14:00–16:00 style
+range queries, same-tick readings), the min-heap, BFS/DFS, failure rerouting,
+and Prim's MST (cross-checked against Kruskal's on 40 random meshes).
 
 ```bash
-dotnet run --project tests/SmartX.Tests/SmartX.Tests.csproj
+dotnet run --project tests/SmartX.Tests
 ```
 
-The expected result for the documented test suite is:
+Expected output ends with `N passed, 0 failed` (N is the total number of
+checks; every check should pass).
 
-```text
----- 65 passed, 0 failed ----
+Manual API testing without the client: use `src/SmartX.Api/SmartX.Api.http`
+(works with the REST Client extension in VS Code, or Visual Studio's built-in
+`.http` file support).
+
+## API endpoint reference
+
+| Method | Route | Purpose |
+|---|---|---|
+| GET | `/health` | Liveness check |
+| GET | `/api/sensors` | List registered sensors |
+| GET | `/api/sensors/{id}` | Get one sensor |
+| POST | `/api/sensors` | Register a sensor (recursively validated) |
+| POST | `/api/sensors/{id}/media` | Multipart file upload (config/photo/log) |
+| GET | `/api/sensors/{id}/attachments` | List a sensor's attachments |
+| POST | `/api/sensors/{id}/simulate/start` \| `/stop` | Start/stop simulated live readings |
+| POST | `/api/telemetry` | Ingest a single reading |
+| POST | `/api/telemetry/batch` | Ingest a batch (jagged-array path) |
+| GET | `/api/telemetry` | All sensors' latest snapshots |
+| GET | `/api/telemetry/{sensorId}` | One sensor's snapshot |
+| GET | `/api/telemetry/{sensorId}/raw-batches` | Raw jagged-array batches (diagnostics) |
+| POST | `/api/telemetry/aggregate` | `Meter3 = Meter1 + Meter2` operator-overload demo |
+| GET | `/api/telemetry/{sensorId}/history?from=&to=&take=` | AVL-tree range query (`from`/`to` ISO-8601 UTC; `sensorId` may be a MAC or Node ID) |
+| GET | `/api/topology` | Mesh graph (nodes, links, MST flags, power totals) |
+| GET | `/api/topology/route?id=&mode=mst\|hops` | Route from a sensor (MAC / Node ID) to the central server |
+| GET | `/api/topology/connectivity?gateway=&algorithm=bfs\|dfs` | Connected / down / stranded devices for a subnet, with failover hops |
+| POST | `/api/topology/nodes/{id}/down` \| `/up` | Simulate a node failure / restore it |
+| POST | `/api/topology/seed-demo` | Register the 10-sensor demo network + history |
+
+## Git history / deliverables checklist
+
+- [x] Word document research paper — see `PROG7312_Task1_Research_Report.docx`
+      (delivered separately alongside this source code)
+- [x] Full source code: API + client, in this repository, building on the
+      shared `SmartX.Shared` library
+- [x] Commit history: 20+ commits touching `src/SmartX.Api`, 20+ touching
+      `src/SmartX.Client` (run `git log --oneline -- src/SmartX.Api` /
+      `-- src/SmartX.Client` to verify), plus `SmartX.Shared` and
+      `SmartX.Tests` history on top
+- [x] Dockerfiles for both API and client, plus `docker-compose.yml`
+- [x] This README, with explicit setup/restore/compile/boot instructions
+- [ ] YouTube video demo — record this yourself following the "Using the
+      app" walkthrough above; your lecturer will advise on submission format
+
+### Pushing this to GitHub
+
+This was built as a single local git repository (not yet pushed anywhere,
+since no GitHub credentials or remote were available in the build
+environment). To publish it:
+
+```bash
+cd SmartX
+git remote add origin <your-empty-github-repo-url>
+git branch -M main
+git push -u origin main
 ```
 
-Run the command locally to confirm the current result; the expected output is not a substitute for executing the tests against the version being submitted.
+If your rubric specifically wants **two separate repositories** (one for the
+API, one for the client) rather than one repo with two projects inside it,
+you can split it with `git subtree split`, e.g.:
 
-### API testing
+```bash
+git subtree split --prefix=src/SmartX.Api -b api-only
+git subtree split --prefix=src/SmartX.Client -b client-only
+# then push each branch to its own new repo
+```
 
-The API also includes a request collection in:
+Keep in mind both projects depend on `src/SmartX.Shared` — if you split them
+into fully separate repos, you'll need to either publish `SmartX.Shared` as
+its own package/repo referenced by both, or copy it into each.
 
-`src/SmartX.Api/SmartX.Api.http`
+## Known limitations / honest caveats
 
-Use it with the REST Client extension in VS Code or the built-in HTTP tooling in Visual Studio to test endpoints without navigating through the Blazor client.
-
----
-
-## API reference
-
-| Method | Endpoint                                | Description                         |
-| ------ | --------------------------------------- | ----------------------------------- |
-| `GET`  | `/health`                               | API liveness check                  |
-| `GET`  | `/api/sensors`                          | List registered sensors             |
-| `GET`  | `/api/sensors/{id}`                     | Retrieve a sensor                   |
-| `POST` | `/api/sensors`                          | Register a sensor                   |
-| `POST` | `/api/sensors/{id}/media`               | Upload a sensor attachment          |
-| `GET`  | `/api/sensors/{id}/attachments`         | List sensor attachments             |
-| `POST` | `/api/sensors/{id}/simulate/start`      | Start simulated telemetry           |
-| `POST` | `/api/sensors/{id}/simulate/stop`       | Stop simulated telemetry            |
-| `POST` | `/api/telemetry`                        | Ingest one telemetry reading        |
-| `POST` | `/api/telemetry/batch`                  | Ingest a batch of telemetry         |
-| `GET`  | `/api/telemetry`                        | Retrieve latest telemetry snapshots |
-| `GET`  | `/api/telemetry/{sensorId}`             | Retrieve one sensor's snapshot      |
-| `GET`  | `/api/telemetry/{sensorId}/raw-batches` | Inspect raw telemetry batches       |
-| `POST` | `/api/telemetry/aggregate`              | Demonstrate power-meter aggregation |
-
-The Command Stream and SignalR hub provide additional functionality. Consult the controllers and hub implementation for their exact routes and message contracts.
-
----
-
-## Configuration and implementation notes
-
-### Configuration
-
-Review the `appsettings.json` files in `SmartX.Api` and `SmartX.Client` before running the application in a different environment.
-
-Important settings include:
-
-- The client's API base URL.
-- The API's permitted CORS origins.
-- File-upload storage locations.
-- Any application-specific simulation or anomaly settings.
-
-For Docker, use the service name and internal container port where required. For local development, use the local API and client URLs documented above.
-
-### Current limitations
-
-**In-memory state:** Sensor registrations and telemetry snapshots are maintained in memory. Application state is therefore lost when the API restarts. Uploaded files are stored separately on disk or in the configured Docker volume.
-
-**Authentication:** The current implementation does not include an authentication or authorisation layer.
-
-**Simulated hardware:** Sensor simulations provide repeatable telemetry for development and demonstrations without requiring physical microcontrollers.
-
-**Predictive recommendations:** The Automated Action Engine uses recorded pattern frequency to suggest responses. Its recommendations should be treated as assistance rather than autonomous decision-making.
-
-**Build and deployment verification:** Confirm that the solution restores, builds, passes its tests and runs under the intended local or Docker environment before submitting it.
-
----
-
-## Project deliverables
-
-- [x] Part 1 sensor ingestion API and telemetry dashboard.
-- [x] Required C# language features.
-- [x] Part 2 command stream and history functionality.
-- [x] Required data structures and automated action suggestions.
-- [x] SignalR-based live updates.
-- [x] Shared production library and console test suite.
-- [x] Dockerfiles and Docker Compose configuration.
-- [x] Project setup and usage documentation.
-- [x] Recorded application demonstration video.
-
-Record the demonstration video separately, showing the key workflows for both parts, the required technical features and the live application behaviour. Follow the submission format specified by the lecturer.
-
----
-
-## Future development
-
-Potential extensions include persistent database storage, authentication and role-based access control, improved device provisioning, configurable anomaly thresholds and more advanced predictive analysis.
-
-These improvements would extend the current platform without changing its central goal: bringing telemetry, monitoring and device management together in a unified Smart-X ecosystem.
-
+- **In-memory storage.** `SensorRegistry` and `TelemetryStore` are in-memory
+  (`ConcurrentDictionary`), not backed by a database — data resets on
+  restart. This was a deliberate scope decision for Part 1; swapping in
+  EF Core + a real database is a natural next step for Part 2/3.
+- **Simulated radio links (Part 3).** The mesh topology and link costs are
+  generated from the registered sensors rather than measured from real RSSI,
+  because the sensors are simulated. The graph algorithms don't care where the
+  edges come from, so real link-quality data could be dropped in.
+- **Unbounded history (Part 3).** The AVL history trees keep every reading in
+  memory (about 43k readings per simulated sensor per day). A production
+  version would evict old readings (AVL delete) or persist to a time-series
+  store.
+- **No authentication.** There's no login/auth layer — out of scope for what
+  the brief asks for in Part 1.
+- **Docker builds are untested end-to-end** in the sandbox this was built in
+  (no Docker daemon available there). The Dockerfiles follow the standard
+  ASP.NET Core multi-stage pattern and `docker-compose.yml` was reviewed
+  carefully, but please run `docker compose up --build` yourself before
+  relying on it for your demo.

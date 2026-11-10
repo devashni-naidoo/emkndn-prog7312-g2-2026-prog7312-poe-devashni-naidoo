@@ -10,11 +10,13 @@ namespace SmartX.Api.Controllers;
 public sealed class TelemetryController : ControllerBase
 {
     private readonly TelemetryStore _store;
+    private readonly TopologyService _topology;
     private readonly ILogger<TelemetryController> _logger;
 
-    public TelemetryController(TelemetryStore store, ILogger<TelemetryController> logger)
+    public TelemetryController(TelemetryStore store, TopologyService topology, ILogger<TelemetryController> logger)
     {
         _store = store;
+        _topology = topology;
         _logger = logger;
     }
 
@@ -57,6 +59,29 @@ public sealed class TelemetryController : ControllerBase
     {
         var snapshot = await _store.GetSnapshotAsync(sensorId);
         return snapshot is null ? NotFound() : Ok(snapshot);
+    }
+
+    /// <summary>
+    /// Historical range query (Part 3): readings for one sensor between two
+    /// UTC instants, served from the sensor's AVL tree. Defaults to the last
+    /// hour. <c>sensorId</c> may also be a MAC address or Node ID.
+    /// </summary>
+    [HttpGet("{sensorId}/history")]
+    public ActionResult<HistoryQueryResultDto> GetHistory(
+        string sensorId,
+        [FromQuery(Name = "from")] DateTimeOffset? fromUtc,
+        [FromQuery(Name = "to")] DateTimeOffset? toUtc,
+        [FromQuery] int take = 200)
+    {
+        var upper = toUtc ?? DateTimeOffset.UtcNow;
+        var lower = fromUtc ?? upper.AddHours(-1);
+        if (lower > upper)
+        {
+            return BadRequest(new { error = "'from' must not be later than 'to'." });
+        }
+
+        var result = _topology.QueryHistory(sensorId, lower, upper, take);
+        return result is null ? NotFound(new { error = $"No sensor matches '{sensorId}'." }) : Ok(result);
     }
 
     /// <summary>Raw jagged-array batches currently buffered for a sensor (diagnostics/demo).</summary>

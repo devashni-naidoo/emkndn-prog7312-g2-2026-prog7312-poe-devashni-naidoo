@@ -137,6 +137,68 @@ public sealed class SmartXApiClient
         return result ?? new List<SuggestedActionDto>();
     }
 
+    // --------------------------- Part 3: topology & history ---------------------------
+
+    public async Task<TopologyDto?> GetTopologyAsync(CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync("api/topology", ct);
+        if (!response.IsSuccessStatusCode) return null;
+        return await response.Content.ReadFromJsonAsync<TopologyDto>(cancellationToken: ct);
+    }
+
+    public async Task<RouteDto?> GetRouteAsync(string identifier, string mode, CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync(
+            $"api/topology/route?id={Uri.EscapeDataString(identifier)}&mode={Uri.EscapeDataString(mode)}", ct);
+
+        // A 404 still carries a human-readable reason ("No sensor matches ...").
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return new RouteDto
+            {
+                Found = false,
+                Mode = mode,
+                Message = await TryReadErrorAsync(response, ct) ?? "No matching sensor."
+            };
+        }
+        if (!response.IsSuccessStatusCode) return null;
+        return await response.Content.ReadFromJsonAsync<RouteDto>(cancellationToken: ct);
+    }
+
+    public async Task<ConnectivityDto?> GetConnectivityAsync(string gatewayId, string algorithm, CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync(
+            $"api/topology/connectivity?gateway={Uri.EscapeDataString(gatewayId)}&algorithm={Uri.EscapeDataString(algorithm)}", ct);
+        if (!response.IsSuccessStatusCode) return null;
+        return await response.Content.ReadFromJsonAsync<ConnectivityDto>(cancellationToken: ct);
+    }
+
+    public async Task<bool> SetNodeDownAsync(string nodeId, bool down, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsync(
+            $"api/topology/nodes/{Uri.EscapeDataString(nodeId)}/{(down ? "down" : "up")}", content: null, ct);
+        return response.IsSuccessStatusCode;
+    }
+
+    public async Task<SeedDemoResultDto?> SeedDemoNetworkAsync(CancellationToken ct = default)
+    {
+        var response = await _http.PostAsync("api/topology/seed-demo", content: null, ct);
+        if (!response.IsSuccessStatusCode) return null;
+        return await response.Content.ReadFromJsonAsync<SeedDemoResultDto>(cancellationToken: ct);
+    }
+
+    public async Task<(HistoryQueryResultDto? Result, string? Error)> QueryHistoryAsync(
+        string sensorId, DateTimeOffset fromUtc, DateTimeOffset toUtc, int take, CancellationToken ct = default)
+    {
+        string fromText = Uri.EscapeDataString(fromUtc.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ"));
+        string toText = Uri.EscapeDataString(toUtc.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ"));
+        var response = await _http.GetAsync(
+            $"api/telemetry/{Uri.EscapeDataString(sensorId)}/history?from={fromText}&to={toText}&take={take}", ct);
+
+        if (!response.IsSuccessStatusCode) return (null, await TryReadErrorAsync(response, ct));
+        return (await response.Content.ReadFromJsonAsync<HistoryQueryResultDto>(cancellationToken: ct), null);
+    }
+
     private static async Task<string?> TryReadErrorAsync(HttpResponseMessage response, CancellationToken ct)
     {
         try

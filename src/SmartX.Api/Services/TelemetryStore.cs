@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using SmartX.Shared.DataStructures;
 using SmartX.Shared.Dtos;
 using SmartX.Shared.Models;
 
@@ -17,15 +18,23 @@ public sealed class TelemetryStore
     private readonly ConcurrentDictionary<string, SensorTelemetryState> _state = new();
     private readonly SensorRegistry _registry;
     private readonly AlertCoordinator _alerts;
+    private readonly TelemetryHistoryIndex _history;
 
     private const int SparklineWindow = 20;
     private static readonly TimeSpan DisconnectAfter = TimeSpan.FromSeconds(15);
 
-    public TelemetryStore(SensorRegistry registry, AlertCoordinator alerts)
+    public TelemetryStore(SensorRegistry registry, AlertCoordinator alerts, TelemetryHistoryIndex history)
     {
         _registry = registry;
         _alerts = alerts;
+        _history = history;
     }
+
+    /// <summary>
+    /// The timestamped AVL-tree history behind the Part 3 range queries.
+    /// Every reading ingested below is also appended here.
+    /// </summary>
+    public TelemetryHistoryIndex History => _history;
 
     /// <summary>Ingests a single reading.</summary>
     public async Task<TelemetrySnapshotDto> IngestAsync(string sensorId, double value)
@@ -36,6 +45,7 @@ public sealed class TelemetryStore
             RecordValue(state, value);
             state.Buffer.AddBatch(new[] { value });
             state.LastUpdatedUtc = DateTimeOffset.UtcNow;
+            _history.Append(sensorId, state.LastUpdatedUtc, value);
         }
         return await BuildSnapshotAsync(sensorId, state);
     }
@@ -52,11 +62,13 @@ public sealed class TelemetryStore
         lock (state)
         {
             state.Buffer.AddBatch(values);
+            var now = DateTimeOffset.UtcNow;
             foreach (var v in values)
             {
                 RecordValue(state, v);
+                _history.Append(sensorId, now, v);
             }
-            state.LastUpdatedUtc = DateTimeOffset.UtcNow;
+            state.LastUpdatedUtc = now;
         }
         return values.Length;
     }
