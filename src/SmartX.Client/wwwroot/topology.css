@@ -1,0 +1,207 @@
+/* ==========================================================================
+   Part 3 - Network Topology & Mesh Routing page.
+   Re-uses the design tokens declared in app.css.
+   ========================================================================== */
+
+.topo-panel,
+.topo-two-col,
+.content > .panel { margin-top: 18px; }
+
+.topo-two-col {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+}
+.topo-two-col > .panel { margin-top: 0; min-width: 0; }
+@media (max-width: 980px) { .topo-two-col { grid-template-columns: 1fr; } }
+
+.topo-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    margin-bottom: 8px;
+}
+.topo-head h2 { margin: 0; }
+
+/* ------------------------------ Legend ----------------------------------- */
+.topo-legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 0.76rem; color: var(--text-dim); }
+.topo-legend .lg {
+    display: inline-block;
+    width: 22px;
+    height: 0;
+    border-top: 3px solid var(--border-bright);
+    vertical-align: middle;
+    margin-right: 6px;
+    border-radius: 2px;
+}
+.lg-mst { border-top-color: var(--accent) !important; }
+.lg-route { border-top-color: var(--status-warning) !important; }
+.lg-link { border-top: 2px solid var(--border-bright) !important; }
+.lg-down { border-top: 2px dashed var(--status-anomalous) !important; }
+
+/* ------------------------------ Mesh map --------------------------------- */
+.topo-svg {
+    width: 100%;
+    height: auto;
+    display: block;
+    background:
+        radial-gradient(circle at 50% 50%, rgba(62, 224, 200, 0.05), transparent 62%),
+        var(--bg);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-md);
+}
+
+.mesh-edge { stroke: var(--border-bright); stroke-width: 1.4; opacity: 0.75; }
+.mesh-edge.mst { stroke: var(--accent); stroke-width: 2.6; opacity: 0.9; }
+.mesh-edge.route { stroke: var(--status-warning); stroke-width: 4; opacity: 1; stroke-linecap: round; }
+.mesh-edge.down { stroke: var(--status-anomalous); stroke-width: 1.2; stroke-dasharray: 4 5; opacity: 0.55; }
+
+.edge-cost {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    fill: var(--text-dim);
+    text-anchor: middle;
+    paint-order: stroke;
+    stroke: var(--bg);
+    stroke-width: 3px;
+    pointer-events: none;
+}
+.edge-cost.on-route { fill: var(--status-warning); font-weight: 600; }
+
+.mesh-node { cursor: pointer; }
+.mesh-node .node-dot { fill: var(--panel-raised); stroke: var(--text-dim); stroke-width: 2; transition: fill 150ms var(--ease), stroke 150ms var(--ease); }
+.mesh-node:hover .node-dot { stroke: var(--text); }
+.mesh-node.server .node-dot { fill: var(--accent); stroke: var(--accent-dim); }
+.mesh-node .server-glyph { fill: none; stroke: #06201B; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.mesh-node.gateway .node-dot { fill: var(--panel-glow); stroke: #7C8CFF; stroke-width: 2.5; }
+.mesh-node.sensor.is-up .node-dot { fill: var(--status-normal); stroke: #0d3d28; }
+.mesh-node.is-isolated .node-dot { fill: var(--status-warning); stroke: #5b4010; }
+.mesh-node.is-down .node-dot { fill: var(--status-disconnected); stroke: var(--status-anomalous); stroke-width: 2.5; stroke-dasharray: 3 3; }
+.mesh-node.on-route .node-dot { stroke: var(--status-warning); stroke-width: 3.5; }
+.node-ring { fill: none; stroke: var(--text); stroke-width: 1.5; stroke-dasharray: 3 3; opacity: 0.8; }
+.node-label {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    fill: var(--text-dim);
+    text-anchor: middle;
+    pointer-events: none;
+}
+.mesh-node.is-down .node-label { fill: var(--status-anomalous); }
+
+/* ------------------------------ Forms ------------------------------------ */
+.topo-form { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+.topo-form.wrap { align-items: flex-end; }
+.topo-form input[type="text"],
+.topo-form input[type="datetime-local"],
+.topo-form select {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    padding: 8px 11px;
+    font-family: var(--font-body);
+    font-size: 0.86rem;
+    min-width: 0;
+    color-scheme: dark;
+}
+.topo-form input[type="text"] { flex: 1 1 200px; font-family: var(--font-mono); }
+.topo-form select { flex: 0 1 auto; max-width: 100%; }
+.topo-form input:focus, .topo-form select:focus { outline: none; border-color: var(--accent-dim); box-shadow: 0 0 0 3px var(--accent-glow); }
+.preset-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+/* ------------------------------ Routes ----------------------------------- */
+.route-card {
+    border: 1px solid var(--border);
+    border-left-width: 4px;
+    border-radius: var(--radius-sm);
+    padding: 14px 16px;
+    background: var(--bg);
+}
+.route-card.ok { border-left-color: var(--status-normal); }
+.route-card.rerouted { border-left-color: var(--status-warning); }
+.route-card.broken { border-left-color: var(--status-anomalous); }
+.route-title { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.route-msg { color: var(--text-dim); font-size: 0.84rem; margin: 4px 0 12px; }
+
+.hop-chain { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.hop-chain.dim { opacity: 0.8; }
+.hop-chain.wrap { row-gap: 8px; }
+.hop-chip {
+    font-family: var(--font-mono);
+    font-size: 0.76rem;
+    padding: 4px 9px;
+    border-radius: 999px;
+    border: 1px solid var(--border-bright);
+    background: var(--panel-raised);
+    white-space: nowrap;
+}
+.hop-chip.server { background: var(--accent); color: #06201B; border-color: var(--accent); font-weight: 600; }
+.hop-chip.gateway { border-color: #7C8CFF; }
+.hop-chip.bypassed { border-color: var(--status-anomalous); color: var(--status-anomalous); text-decoration: line-through; }
+.hop-arrow { color: var(--text-faint); font-size: 0.8rem; display: inline-flex; flex-direction: column; align-items: center; line-height: 1; }
+.hop-arrow small { font-family: var(--font-mono); font-size: 0.62rem; color: var(--status-warning); margin-top: 2px; }
+
+.route-stats { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 12px; font-size: 0.82rem; color: var(--text-dim); }
+.route-stats b { color: var(--text); font-family: var(--font-mono); }
+.tag-warn { color: var(--status-warning); }
+.route-baseline { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--border); }
+
+.node-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-soft); }
+
+/* --------------------------- Connectivity -------------------------------- */
+.conn-summary { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.conn-count {
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+}
+.conn-count b { font-family: var(--font-mono); color: var(--text); margin-right: 3px; }
+.conn-count.good { border-color: rgba(61, 220, 151, 0.4); }
+.conn-count.warn { border-color: rgba(242, 177, 52, 0.5); }
+.conn-count.bad { border-color: rgba(240, 85, 91, 0.5); }
+
+.advice {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-left-width: 3px;
+    font-size: 0.86rem;
+}
+.advice.down { border-left-color: var(--status-anomalous); }
+.advice.stranded { border-left-color: var(--status-warning); }
+.alt-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+
+/* ------------------------------ Tables ----------------------------------- */
+.mst-scroll { max-height: 300px; overflow: auto; }
+.history-scroll { max-height: 380px; overflow: auto; margin-top: 10px; border: 1px solid var(--border-soft); border-radius: var(--radius-sm); }
+.mst-scroll tfoot td { padding: 10px 12px; border-top: 1px solid var(--border); }
+.history-scroll thead th { position: sticky; top: 0; background: var(--panel); }
+.delta-up { color: var(--status-warning); }
+.delta-down { color: #7C8CFF; }
+
+.tree-note {
+    margin-top: 12px;
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+    border: 1px solid var(--border-soft);
+}
+.tree-note b { color: var(--accent); font-family: var(--font-mono); }
+
+.history-spark {
+    width: 100%;
+    height: 70px;
+    margin-top: 12px;
+    background: var(--bg);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+}
+.history-spark polyline { fill: none; stroke: var(--accent); stroke-width: 1.6; vector-effect: non-scaling-stroke; }
