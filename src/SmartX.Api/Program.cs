@@ -19,11 +19,15 @@ builder.Services.AddControllers();
 //   app.UseSwaggerUI();
 
 builder.Services.AddSingleton<SensorRegistry>();
+// Part 3: AVL-tree-backed historical telemetry (shared singleton so every
+// ingest path and the history endpoint see the same trees).
+builder.Services.AddSingleton<SmartX.Shared.DataStructures.TelemetryHistoryIndex>();
 builder.Services.AddSingleton<AlertCoordinator>();
 builder.Services.AddSingleton<TelemetryStore>();
 builder.Services.AddSingleton<SensorSimulator>();
 builder.Services.AddSingleton<DeviceStateService>();
 builder.Services.AddSingleton<PredictiveInsightService>();
+builder.Services.AddSingleton<TopologyService>();
 
 // CommandProcessorWorker is both an injectable singleton (controllers call
 // Enqueue/UndoLast/RecentHistory directly) and the hosted background service
@@ -95,7 +99,7 @@ app.MapGet("/", () => Results.Ok(new
 {
     service = "SmartX.Api",
     status = "running",
-    endpoints = new[] { "/api/sensors", "/api/telemetry" }
+    endpoints = new[] { "/api/sensors", "/api/telemetry", "/api/commands", "/api/insights", "/api/topology" }
 }));
 
 app.Run();
