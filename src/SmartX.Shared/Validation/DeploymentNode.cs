@@ -1,9 +1,5 @@
 namespace SmartX.Shared.Validation;
 
-/// <summary>
-/// One node in a nested device deployment tree / multi-tier configuration
-/// profile, e.g. Facility A -> Zone 1 -> Sub-Zone B -> Node 07.
-/// </summary>
 public sealed class DeploymentNode
 {
     public string Id { get; }

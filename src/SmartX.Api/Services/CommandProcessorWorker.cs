@@ -5,14 +5,6 @@ using SmartX.Shared.DataStructures;
 
 namespace SmartX.Api.Services;
 
-/// <summary>
-/// Owns the standard <see cref="CommandQueue"/>, the
-/// <see cref="CriticalAlertQueue"/>, and the <see cref="CommandHistoryStack"/>
-/// (for Undo), and continuously drains them: critical commands are always
-/// checked first, so a severe alert's response jumps ahead of whatever
-/// standard-severity commands are already queued, without the standard
-/// queue's FIFO order among themselves ever being disturbed.
-/// </summary>
 public sealed class CommandProcessorWorker : BackgroundService
 {
     private readonly CommandQueue _standard = new();
@@ -49,7 +41,7 @@ public sealed class CommandProcessorWorker : BackgroundService
         }
     }
 
-    /// <summary>Pops the last executed command off the undo stack and re-queues its inverse.</summary>
+
     public DeviceCommand? UndoLast()
     {
         var inverse = _history.Undo();

@@ -3,10 +3,6 @@ using SmartX.Shared.Telemetry;
 
 namespace SmartX.Shared.DataStructures;
 
-/// <summary>
-/// Composite AVL key: UTC ticks first, then an insertion sequence number so
-/// two readings that land on the same tick never overwrite each other.
-/// </summary>
 public readonly record struct TelemetryKey(long Ticks, long Sequence) : IComparable<TelemetryKey>
 {
     public int CompareTo(TelemetryKey other)
@@ -16,20 +12,12 @@ public readonly record struct TelemetryKey(long Ticks, long Sequence) : ICompara
     }
 }
 
-/// <summary>Result of a historical range query, including how much work the tree did.</summary>
 public sealed record HistoryQueryResult(
     IReadOnlyList<TelemetryRecord> Records,
     int TreeSize,
     int TreeHeight,
     int NodesVisited);
 
-/// <summary>
-/// Historical, timestamped telemetry storage (Part 3 - Historical Data
-/// Querying). Each sensor owns one <see cref="AvlTree{TKey,TValue}"/> keyed
-/// on the reading's timestamp, so "all readings between 14:00 and 16:00 for
-/// Node A" is a single O(log n + k) range query instead of a scan over an
-/// unordered list of every reading ever received.
-/// </summary>
 public sealed class TelemetryHistoryIndex
 {
     private sealed class SensorHistory
@@ -54,7 +42,6 @@ public sealed class TelemetryHistoryIndex
     public int Count(string sensorId) =>
         _bySensor.TryGetValue(sensorId, out var h) ? Locked(h, () => h.Tree.Count) : 0;
 
-    /// <summary>Inclusive range query, oldest reading first.</summary>
     public HistoryQueryResult Query(string sensorId, DateTimeOffset fromUtc, DateTimeOffset toUtc)
     {
         if (!_bySensor.TryGetValue(sensorId, out var history))
@@ -71,7 +58,7 @@ public sealed class TelemetryHistoryIndex
         }
     }
 
-    /// <summary>Earliest and latest timestamps held for a sensor, if any.</summary>
+    
     public (DateTimeOffset First, DateTimeOffset Last)? Span(string sensorId)
     {
         if (!_bySensor.TryGetValue(sensorId, out var history)) return null;

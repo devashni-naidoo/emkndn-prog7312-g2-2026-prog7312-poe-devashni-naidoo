@@ -1,12 +1,5 @@
 namespace SmartX.Shared.Telemetry;
 
-/// <summary>
-/// A single power-meter reading in watts. Operators are overloaded so callers
-/// can aggregate or compare meters directly in code, e.g.
-/// <c>Meter3 = Meter1 + Meter2</c>, exactly as described in the module brief,
-/// instead of manually unpacking and re-wrapping the underlying value on
-/// every call site.
-/// </summary>
 public readonly struct PowerMeterReading : IEquatable<PowerMeterReading>
 {
     public string MeterId { get; }
@@ -20,11 +13,11 @@ public readonly struct PowerMeterReading : IEquatable<PowerMeterReading>
         TimestampUtc = timestampUtc ?? DateTimeOffset.UtcNow;
     }
 
-    /// <summary>Aggregates the load of two meters: Meter3 = Meter1 + Meter2.</summary>
+    //Aggregates the load of two meters: Meter3 = Meter1 + Meter2.
     public static PowerMeterReading operator +(PowerMeterReading a, PowerMeterReading b) =>
         new($"{a.MeterId}+{b.MeterId}", a.Watts + b.Watts);
 
-    /// <summary>Delta comparison between two meters, e.g. load shed since last reading.</summary>
+
     public static PowerMeterReading operator -(PowerMeterReading a, PowerMeterReading b) =>
         new($"{a.MeterId}-{b.MeterId}", a.Watts - b.Watts);
 

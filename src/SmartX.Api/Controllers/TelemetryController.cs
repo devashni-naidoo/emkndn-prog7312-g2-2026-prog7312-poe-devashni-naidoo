@@ -20,7 +20,6 @@ public sealed class TelemetryController : ControllerBase
         _logger = logger;
     }
 
-    /// <summary>Ingests a single reading and returns the recomputed snapshot.</summary>
     [HttpPost]
     public async Task<ActionResult<TelemetrySnapshotDto>> Ingest([FromBody] IngestReadingRequest request)
     {
@@ -33,10 +32,6 @@ public sealed class TelemetryController : ControllerBase
         return Ok(snapshot);
     }
 
-    /// <summary>
-    /// Ingests a burst of readings as one jagged-array batch — exercises
-    /// <see cref="TelemetryHistoryBuffer{T}"/> directly.
-    /// </summary>
     [HttpPost("batch")]
     public async Task<ActionResult<object>> IngestBatch([FromBody] IngestBatchRequest request)
     {
@@ -61,11 +56,6 @@ public sealed class TelemetryController : ControllerBase
         return snapshot is null ? NotFound() : Ok(snapshot);
     }
 
-    /// <summary>
-    /// Historical range query (Part 3): readings for one sensor between two
-    /// UTC instants, served from the sensor's AVL tree. Defaults to the last
-    /// hour. <c>sensorId</c> may also be a MAC address or Node ID.
-    /// </summary>
     [HttpGet("{sensorId}/history")]
     public ActionResult<HistoryQueryResultDto> GetHistory(
         string sensorId,
@@ -84,7 +74,7 @@ public sealed class TelemetryController : ControllerBase
         return result is null ? NotFound(new { error = $"No sensor matches '{sensorId}'." }) : Ok(result);
     }
 
-    /// <summary>Raw jagged-array batches currently buffered for a sensor (diagnostics/demo).</summary>
+
     [HttpGet("{sensorId}/raw-batches")]
     public ActionResult<double[][]> GetRawBatches(string sensorId)
     {
@@ -92,10 +82,6 @@ public sealed class TelemetryController : ControllerBase
         return batches is null ? NotFound() : Ok(batches);
     }
 
-    /// <summary>
-    /// Demonstrates the overloaded <c>+</c> operator on
-    /// <see cref="PowerMeterReading"/>: Meter3 = Meter1 + Meter2.
-    /// </summary>
     [HttpPost("aggregate")]
     public async Task<ActionResult<object>> AggregateMeters([FromBody] AggregateMetersRequest request)
     {
@@ -109,7 +95,6 @@ public sealed class TelemetryController : ControllerBase
         var meter1 = new PowerMeterReading(request.MeterIdA, a.LatestValue);
         var meter2 = new PowerMeterReading(request.MeterIdB, b.LatestValue);
 
-        // The actual operator-overload usage the brief asks for:
         PowerMeterReading meter3 = meter1 + meter2;
         PowerMeterReading delta = meter1 - meter2;
 

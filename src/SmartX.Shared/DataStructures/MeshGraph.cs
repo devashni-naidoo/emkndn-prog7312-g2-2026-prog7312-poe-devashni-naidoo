@@ -7,31 +7,22 @@ public enum MeshNodeKind
     Sensor
 }
 
-/// <summary>A vertex of the mesh: the central server, a zone gateway, or an ESP32 sensor node.</summary>
 public sealed record MeshVertex(string Id, string Label, MeshNodeKind Kind, string Zone);
 
-/// <summary>An undirected wireless link. <see cref="Cost"/> is the relative power cost of hopping across it.</summary>
+
 public sealed record MeshEdge(string A, string B, double Cost)
 {
     public string Other(string id) => id == A ? B : A;
 }
 
-/// <summary>Order in which a traversal reached each vertex, plus each vertex's parent.</summary>
+
 public sealed record TraversalResult(
     IReadOnlyList<string> VisitOrder,
     IReadOnlyDictionary<string, string?> Parent);
 
-/// <summary>A minimum spanning tree (or forest, if the graph is disconnected).</summary>
+
 public sealed record SpanningTreeResult(IReadOnlyList<MeshEdge> Edges, double TotalCost, int VerticesSpanned);
 
-/// <summary>
-/// Undirected weighted graph modelling the physical IoT mesh (Part 3 -
-/// Graphs). Vertices are the ESP32 sensors (plus zone gateways and the
-/// central server); edges are wireless connections. Stored as an adjacency
-/// list. Every algorithm takes an optional <c>passable</c> predicate so a
-/// failed (down) node can simply be excluded from the traversal without
-/// mutating the graph.
-/// </summary>
 public sealed class MeshGraph
 {
     private readonly Dictionary<string, MeshVertex> _vertices = new();
@@ -53,7 +44,7 @@ public sealed class MeshGraph
         }
     }
 
-    /// <summary>Adds an undirected link. Duplicate links and self-loops are ignored.</summary>
+
     public bool AddEdge(string a, string b, double cost)
     {
         if (a == b || !_vertices.ContainsKey(a) || !_vertices.ContainsKey(b)) return false;
@@ -71,13 +62,7 @@ public sealed class MeshGraph
 
     public IEnumerable<string> NeighboursOf(string id) => LinksOf(id).Select(e => e.Other(id));
 
-    // ------------------------------------------------------------- traversal
 
-    /// <summary>
-    /// Breadth-first search: visits vertices in order of hop distance from
-    /// <paramref name="start"/>, using a FIFO queue. Finds every device
-    /// still reachable from a gateway, and the fewest-hop route to each.
-    /// </summary>
     public TraversalResult Bfs(string start, Func<string, bool>? passable = null)
     {
         var order = new List<string>();
@@ -108,10 +93,7 @@ public sealed class MeshGraph
         return new TraversalResult(order, parent);
     }
 
-    /// <summary>
-    /// Depth-first search (iterative, explicit stack): follows one branch of
-    /// the mesh as deep as it goes before backtracking.
-    /// </summary>
+
     public TraversalResult Dfs(string start, Func<string, bool>? passable = null)
     {
         var order = new List<string>();
@@ -133,7 +115,7 @@ public sealed class MeshGraph
             parent[current] = via;
             order.Add(current);
 
-            // Push in reverse so neighbours are explored in their stored order.
+
             var neighbours = NeighboursOf(current).Where(n => !visited.Contains(n) && (passable?.Invoke(n) ?? true)).ToList();
             for (int i = neighbours.Count - 1; i >= 0; i--)
             {
@@ -144,14 +126,13 @@ public sealed class MeshGraph
         return new TraversalResult(order, parent);
     }
 
-    /// <summary>Fewest-hop path (BFS), or null when <paramref name="target"/> cannot be reached.</summary>
     public List<string>? ShortestHopPath(string source, string target, Func<string, bool>? passable = null)
     {
         var bfs = Bfs(source, passable);
         return PathFromParents(bfs.Parent, target);
     }
 
-    /// <summary>Rebuilds the root-to-target path from a traversal's parent map.</summary>
+
     public static List<string>? PathFromParents(IReadOnlyDictionary<string, string?> parent, string target)
     {
         if (!parent.ContainsKey(target)) return null;
@@ -167,15 +148,7 @@ public sealed class MeshGraph
         return path;
     }
 
-    // ---------------------------------------------------------- spanning tree
-
-    /// <summary>
-    /// Prim's algorithm. Grows the tree outwards from <paramref name="root"/>
-    /// (the central server): a <see cref="MinHeap{TElement,TPriority}"/> of
-    /// candidate links always yields the cheapest link that reaches a vertex
-    /// not yet in the tree. The result is the set of links that connects every
-    /// reachable node to the server at the lowest total power cost.
-    /// </summary>
+    /// Prim's algorithm
     public SpanningTreeResult Prim(string root, Func<string, bool>? passable = null)
     {
         var edges = new List<MeshEdge>();
@@ -203,7 +176,7 @@ public sealed class MeshGraph
 
         while (heap.TryPop(out var item, out _))
         {
-            if (inTree.Contains(item.To)) continue; // stale entry: already reached more cheaply
+            if (inTree.Contains(item.To)) continue; 
 
             inTree.Add(item.To);
             edges.Add(item.Edge);
@@ -214,11 +187,6 @@ public sealed class MeshGraph
         return new SpanningTreeResult(edges, Math.Round(total, 2), inTree.Count);
     }
 
-    /// <summary>
-    /// Kruskal's algorithm (sort edges, union-find to reject cycles). Not used
-    /// by the UI - it exists as an independent second implementation so the
-    /// test suite can confirm Prim's total cost is truly minimal.
-    /// </summary>
     public SpanningTreeResult Kruskal(Func<string, bool>? passable = null)
     {
         var usable = _vertices.Keys.Where(id => passable?.Invoke(id) ?? true).ToList();
@@ -251,10 +219,6 @@ public sealed class MeshGraph
         return new SpanningTreeResult(chosen, Math.Round(total, 2), usable.Count);
     }
 
-    /// <summary>
-    /// Route from <paramref name="source"/> to <paramref name="target"/> along the
-    /// given spanning tree's links only (the power-efficient routing path).
-    /// </summary>
     public static List<string>? PathInTree(SpanningTreeResult tree, string source, string target)
     {
         var adjacency = new Dictionary<string, List<string>>();
@@ -286,7 +250,6 @@ public sealed class MeshGraph
         return PathFromParents(parent, target);
     }
 
-    /// <summary>Sum of the link costs along a vertex path.</summary>
     public double PathCost(IReadOnlyList<string> path)
     {
         double total = 0;
@@ -298,3 +261,11 @@ public sealed class MeshGraph
         return Math.Round(total, 2);
     }
 }
+
+/*
+ * Title:        Introduction to Algorithms (BFS, DFS, Prim's and Kruskal's minimum spanning tree)
+ * Author:       Cormen, T.H., Leiserson, C.E., Rivest, R.L. and Stein, C.
+ * Version:      4th edition (2022)
+ * Date:         2022
+ * Availability: https://mitpress.mit.edu/9780262046305/introduction-to-algorithms/
+ */

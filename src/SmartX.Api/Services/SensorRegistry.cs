@@ -6,12 +6,6 @@ using SmartX.Shared.Validation;
 
 namespace SmartX.Api.Services;
 
-/// <summary>
-/// Thread-safe in-memory store of registered <see cref="DeviceProfile"/>
-/// records. A real deployment would back this with a database, but the
-/// module brief scopes Part 1 to the ingestion/validation gateway itself, so
-/// an in-process registry keeps the sample self-contained and dependency-free.
-/// </summary>
 public sealed class SensorRegistry
 {
     private static readonly Regex MacAddressPattern =
@@ -19,11 +13,6 @@ public sealed class SensorRegistry
 
     private readonly ConcurrentDictionary<string, DeviceProfile> _sensors = new();
 
-    // O(1) MAC -> device lookup (Part 2 technical requirement), kept in sync
-    // with _sensors by Register()/AddAttachment() below. Access is guarded
-    // by a lock since DeviceIndex's backing Dictionary<TKey,TValue> is not
-    // itself thread-safe, unlike the ConcurrentDictionary used for the
-    // primary store.
     private readonly DeviceIndex _macIndex = new();
     private readonly object _indexLock = new();
 
@@ -31,7 +20,6 @@ public sealed class SensorRegistry
 
     public DeviceProfile? Get(string id) => _sensors.TryGetValue(id, out var profile) ? profile : null;
 
-    /// <summary>O(1) lookup by MAC address, used when a telemetry packet or command arrives.</summary>
     public DeviceProfile? FindByMac(string macAddress)
     {
         lock (_indexLock)
@@ -40,10 +28,6 @@ public sealed class SensorRegistry
         }
     }
 
-    /// <summary>
-    /// Validates the deployment hierarchy recursively (via
-    /// <see cref="DeploymentValidator"/>) before accepting the registration.
-    /// </summary>
     public (bool Success, string Message, DeviceProfile? Profile) Register(
         string macAddress, string facility, string zone, string subZone, string room,
         string nodeId, SensorCategory category)
