@@ -5,24 +5,26 @@ namespace SmartX.Shared.DataStructures;
 public sealed class CommandHistoryStack
 {
     private readonly Stack<DeviceCommand> _history = new();
+    private readonly object _gate = new();
 
-    public int Count => _history.Count;
+    public int Count { get { lock (_gate) return _history.Count; } }
 
-    public void Push(DeviceCommand command) => _history.Push(command);
+    public void Push(DeviceCommand command) { lock (_gate) _history.Push(command); }
 
-    /// Pops the most recent command and returns its inverse, ready to be
-    /// re-issued through the queue — or <c>null</c> if there's nothing to
-    /// undo, or the most recent command has no meaningful inverse
     public DeviceCommand? Undo()
     {
-        if (!_history.TryPop(out var last))
+        DeviceCommand? last;
+        lock (_gate)
         {
-            return null;
+            if (!_history.TryPop(out last))
+            {
+                return null;
+            }
         }
         return last.Inverse();
     }
 
-    public DeviceCommand? PeekLast() => _history.TryPeek(out var last) ? last : null;
+    public DeviceCommand? PeekLast() { lock (_gate) return _history.TryPeek(out var last) ? last : null; }
 
-    public IReadOnlyList<DeviceCommand> Snapshot(int take = 20) => _history.Take(take).ToList();
+    public IReadOnlyList<DeviceCommand> Snapshot(int take = 20) { lock (_gate) return _history.Take(take).ToList(); }
 }
