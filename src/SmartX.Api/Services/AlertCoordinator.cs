@@ -6,14 +6,7 @@ using SmartX.Shared.Dtos;
 
 namespace SmartX.Api.Services;
 
-/// <summary>
-/// Central point where Part 1's anomaly engine (<see cref="TelemetryStore"/>)
-/// and Part 2's command stream meet: owns the <see cref="ActiveAlertSet"/>
-/// (so a still-active alert is never re-raised or re-broadcast), the
-/// <see cref="SensorLogTimeline"/> (so every alert/resolution/command has a
-/// timestamped history entry), and the <see cref="PatternFrequencyTracker"/>
-/// behind the predictive insights engine.
-/// </summary>
+
 public sealed class AlertCoordinator
 {
     private readonly ActiveAlertSet _activeAlerts = new();
@@ -32,12 +25,7 @@ public sealed class AlertCoordinator
     public SensorLogTimeline Timeline => _timeline;
     public PatternFrequencyTracker Patterns => _patterns;
 
-    /// <summary>
-    /// Called by <see cref="TelemetryStore"/> whenever a sensor's computed
-    /// status changes. Only broadcasts/logs on an actual state transition —
-    /// the <see cref="ActiveAlertSet"/>'s set semantics are what make that
-    /// idempotent even if this is called on every single poll.
-    /// </summary>
+
     public async Task SyncAlertStateAsync(string sensorId, string displayName, string alertType, bool shouldBeActive)
     {
         string key = ActiveAlertSet.KeyFor(sensorId, alertType);
@@ -84,11 +72,9 @@ public sealed class AlertCoordinator
         }
     }
 
-    /// <summary>
+
     /// Records that this command was issued for a sensor that currently has
-    /// an active alert — the raw material the predictive engine's frequency
-    /// counter learns from.
-    /// </summary>
+    /// an active alert 
     public void RecordCommandAgainstActiveAlerts(string sensorId, CommandType command)
     {
         foreach (var alertType in new[] { "Anomalous", "Disconnected" })

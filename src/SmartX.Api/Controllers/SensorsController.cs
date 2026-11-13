@@ -45,11 +45,6 @@ public sealed class SensorsController : ControllerBase
         return profile is null ? NotFound() : Ok(profile);
     }
 
-    /// <summary>
-    /// Registers a new (simulated or attached) sensor. The deployment path
-    /// is validated recursively server-side before anything is stored — see
-    /// <see cref="SmartX.Shared.Validation.DeploymentValidator"/>.
-    /// </summary>
     [HttpPost]
     public ActionResult<DeviceProfile> Register([FromBody] RegisterSensorRequest request)
     {
@@ -66,13 +61,6 @@ public sealed class SensorsController : ControllerBase
         return CreatedAtAction(nameof(GetById), new { id = profile.Id }, profile);
     }
 
-    /// <summary>
-    /// Optimised multipart file upload for device configuration files,
-    /// deployment photos, or hardware logs attached to a sensor profile.
-    /// Streams straight to disk rather than buffering the whole file in
-    /// memory, and rejects anything over <see cref="MaxAttachmentBytes"/>
-    /// before it is written.
-    /// </summary>
     [HttpPost("{id}/media")]
     [RequestSizeLimit(MaxAttachmentBytes)]
     public async Task<IActionResult> UploadMedia(string id, IFormFile file)
@@ -142,12 +130,6 @@ public sealed class SensorsController : ControllerBase
         return profile is null ? NotFound() : Ok(profile.Attachments);
     }
 
-    /// <summary>
-    /// Finds specific devices by free-text node/MAC match, category, and/or
-    /// current alert state — the search/filter requirement for the Command
-    /// Stream page. Every non-empty query term is also fed into the
-    /// predictive engine's search-frequency tracker.
-    /// </summary>
     [HttpGet("search")]
     public async Task<ActionResult<IReadOnlyList<DeviceSearchResultDto>>> Search(
         [FromQuery] string? q, [FromQuery] SensorCategory? category, [FromQuery] bool? hasActiveAlert)

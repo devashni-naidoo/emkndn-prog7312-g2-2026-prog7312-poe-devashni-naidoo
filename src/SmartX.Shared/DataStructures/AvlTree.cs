@@ -1,16 +1,14 @@
 namespace SmartX.Shared.DataStructures;
 
-/// <summary>
-/// Self-balancing AVL binary search tree (Part 3 - Trees requirement).
+
+/// Self-balancing AVL binary search tree 
 /// Every node stores its subtree height; after each insert the balance
 /// factor (left height - right height) of every node on the insertion path
 /// is checked and, if it leaves the range [-1, 1], one of the four rotations
 /// (LL, RR, LR, RL) restores it. The tree height is therefore always
 /// O(log n), which is what makes <see cref="Range"/> queries O(log n + k)
 /// (k = number of matches) instead of an O(n) scan of an unordered list.
-/// </summary>
-/// <typeparam name="TKey">Ordering key (must be comparable).</typeparam>
-/// <typeparam name="TValue">Payload stored against each key.</typeparam>
+
 public sealed class AvlTree<TKey, TValue> where TKey : IComparable<TKey>
 {
     private sealed class Node
@@ -32,13 +30,11 @@ public sealed class AvlTree<TKey, TValue> where TKey : IComparable<TKey>
 
     public int Count { get; private set; }
 
-    /// <summary>Number of rotations performed so far (useful for demos/tests).</summary>
     public int RotationCount { get; private set; }
 
-    /// <summary>Height of the tree (0 when empty, 1 for a single node).</summary>
+
     public int Height => HeightOf(_root);
 
-    /// <summary>Inserts a key, replacing the value if the key already exists.</summary>
     public void Insert(TKey key, TValue value)
     {
         _root = Insert(_root, key, value);
@@ -81,13 +77,11 @@ public sealed class AvlTree<TKey, TValue> where TKey : IComparable<TKey>
         return true;
     }
 
-    /// <summary>
     /// Returns every value whose key lies in the inclusive range
     /// [<paramref name="low"/>, <paramref name="high"/>], in ascending key
     /// order. Whole subtrees that cannot contain a match are skipped, so
     /// only O(log n + k) nodes are ever visited.
-    /// </summary>
-    /// <param name="nodesVisited">How many tree nodes the query touched.</param>
+
     public List<TValue> Range(TKey low, TKey high, out int nodesVisited)
     {
         var results = new List<TValue>();
@@ -100,7 +94,6 @@ public sealed class AvlTree<TKey, TValue> where TKey : IComparable<TKey>
         return results;
     }
 
-    /// <summary>All values in ascending key order (in-order traversal).</summary>
     public List<TValue> InOrder()
     {
         var results = new List<TValue>(Count);
@@ -120,13 +113,11 @@ public sealed class AvlTree<TKey, TValue> where TKey : IComparable<TKey>
         return results;
     }
 
-    /// <summary>
+
     /// Verifies the AVL invariants (BST ordering, correct stored heights,
-    /// every balance factor within [-1, 1]). Used by the test suite.
-    /// </summary>
+ 
     public bool IsValidAvl() => Validate(_root, false, default!, false, default!, out _);
 
-    // ------------------------------------------------------------------ internals
 
     private static int HeightOf(Node? node) => node?.Height ?? 0;
 
@@ -162,7 +153,6 @@ public sealed class AvlTree<TKey, TValue> where TKey : IComparable<TKey>
 
         if (balance > 1)
         {
-            // Left-heavy. If the left child leans right, rotate it left first (LR case).
             if (BalanceOf(node.Left!) < 0)
             {
                 node.Left = RotateLeft(node.Left!);
@@ -172,7 +162,6 @@ public sealed class AvlTree<TKey, TValue> where TKey : IComparable<TKey>
 
         if (balance < -1)
         {
-            // Right-heavy. If the right child leans left, rotate it right first (RL case).
             if (BalanceOf(node.Right!) > 0)
             {
                 node.Right = RotateRight(node.Right!);
@@ -250,3 +239,11 @@ public sealed class AvlTree<TKey, TValue> where TKey : IComparable<TKey>
         return height == node.Height && Math.Abs(lh - rh) <= 1;
     }
 }
+
+/*
+ * Title:        Introduction to Algorithms (AVL tree balancing and rotations)
+ * Author:       Cormen, T.H., Leiserson, C.E., Rivest, R.L. and Stein, C.
+ * Version:      4th edition (2022)
+ * Date:         2022
+ * Availability: https://mitpress.mit.edu/9780262046305/introduction-to-algorithms/
+ */

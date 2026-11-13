@@ -2,14 +2,9 @@ using SmartX.Shared.Models;
 
 namespace SmartX.Shared.DataStructures;
 
-/// <summary>
 /// Indexes registered devices by MAC address / unique node identifier for
 /// instantaneous O(1) lookups when a new telemetry packet or command
-/// arrives, rather than scanning the full device list. Backed directly by
-/// <see cref="Dictionary{TKey,TValue}"/>; the registry's primary store
-/// (keyed by generated sensor id) and this index are kept in sync by
-/// whoever registers/removes a device.
-/// </summary>
+/// arrives, rather than scanning the full device list. 
 public sealed class DeviceIndex
 {
     private readonly Dictionary<string, DeviceProfile> _byMac = new(StringComparer.OrdinalIgnoreCase);
@@ -20,7 +15,6 @@ public sealed class DeviceIndex
 
     public bool Remove(string macAddress) => _byMac.Remove(macAddress);
 
-    /// <summary>O(1) average-case lookup — the whole point of this structure.</summary>
     public DeviceProfile? FindByMac(string macAddress) =>
         _byMac.TryGetValue(macAddress, out var profile) ? profile : null;
 

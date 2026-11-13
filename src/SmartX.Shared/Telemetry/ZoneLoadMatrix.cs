@@ -1,13 +1,5 @@
 namespace SmartX.Shared.Telemetry;
 
-/// <summary>
-/// Rectangular multi-dimensional array (<c>double[,]</c>) that aggregates
-/// power load by zone (rows) and hour-of-day (columns). Unlike the jagged
-/// array used by <see cref="TelemetryHistoryBuffer{T}"/>, this data is a true
-/// fixed-size grid — every zone has exactly the same 24 hourly buckets — so a
-/// rectangular multi-dimensional array is the appropriate structure rather
-/// than a jagged one.
-/// </summary>
 public sealed class ZoneLoadMatrix
 {
     private const int HoursPerDay = 24;
@@ -34,12 +26,7 @@ public sealed class ZoneLoadMatrix
         _wattsByZoneAndHour[row, col] += watts;
     }
 
-    /// <summary>
-    /// Rebuilds the backing rectangular array one row larger to accommodate a
-    /// newly seen zone, copying every existing cell across. Zones are
-    /// registered rarely (at sensor-registration time), so this is not a hot
-    /// path — the ingestion path itself only ever does an O(1) cell update.
-    /// </summary>
+
     private int GrowForNewZone(string zone)
     {
         _zones.Add(zone);

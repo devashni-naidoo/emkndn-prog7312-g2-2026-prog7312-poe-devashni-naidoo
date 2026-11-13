@@ -5,14 +5,10 @@ using SmartX.Shared.Models;
 
 namespace SmartX.Api.Services;
 
-/// <summary>
+
 /// Ingests readings (singly or as jagged-array batches), keeps a rolling
 /// sparkline window per sensor, and computes the threshold-based anomaly
-/// status that drives the dashboard's real-time visual telemetry feedback —
-/// the engagement strategy selected in the Task 1 research report. Status
-/// transitions are also synced into <see cref="AlertCoordinator"/>, which is
-/// what feeds Part 2's live alert stream and predictive insights engine.
-/// </summary>
+/// status that drives the dashboard's real-time visual telemetry feedback 
 public sealed class TelemetryStore
 {
     private readonly ConcurrentDictionary<string, SensorTelemetryState> _state = new();
@@ -30,13 +26,13 @@ public sealed class TelemetryStore
         _history = history;
     }
 
-    /// <summary>
+
     /// The timestamped AVL-tree history behind the Part 3 range queries.
     /// Every reading ingested below is also appended here.
-    /// </summary>
+
     public TelemetryHistoryIndex History => _history;
 
-    /// <summary>Ingests a single reading.</summary>
+
     public async Task<TelemetrySnapshotDto> IngestAsync(string sensorId, double value)
     {
         var state = _state.GetOrAdd(sensorId, id => new SensorTelemetryState(id));
@@ -50,10 +46,10 @@ public sealed class TelemetryStore
         return await BuildSnapshotAsync(sensorId, state);
     }
 
-    /// <summary>
+
     /// Ingests a burst of readings as a single jagged-array batch — e.g. a
     /// sensor flushing buffered samples after reconnecting.
-    /// </summary>
+
     public int IngestBatch(string sensorId, double[] values)
     {
         if (values.Length == 0) return 0;
@@ -99,12 +95,6 @@ public sealed class TelemetryStore
         return results;
     }
 
-    /// <summary>
-    /// Raw jagged-array batch snapshot for a sensor — mainly exposed so the
-    /// dashboard/demo can show that batches genuinely flow through
-    /// <see cref="Telemetry.TelemetryHistoryBuffer{T}"/> rather than being
-    /// flattened away before they reach storage.
-    /// </summary>
     public double[][]? GetRawBatches(string sensorId) =>
         _state.TryGetValue(sensorId, out var state) ? state.Buffer.SnapshotBatches() : null;
 
@@ -139,10 +129,7 @@ public sealed class TelemetryStore
 
         string displayName = profile is not null ? $"{profile.Location.NodeId} · {profile.Category}" : sensorId;
 
-        // Keep Part 2's alert set/timeline/hub in sync with whatever Part 1's
-        // threshold engine just decided. ActiveAlertSet's set semantics make
-        // this safe to call on every single snapshot build without spamming
-        // duplicate alerts.
+   
         await _alerts.SyncAlertStateAsync(sensorId, displayName, "Anomalous", status == TelemetryStatus.Anomalous);
         await _alerts.SyncAlertStateAsync(sensorId, displayName, "Disconnected", status == TelemetryStatus.Disconnected);
 

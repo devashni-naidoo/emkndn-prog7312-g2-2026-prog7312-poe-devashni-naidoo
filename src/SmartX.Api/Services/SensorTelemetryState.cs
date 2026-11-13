@@ -2,10 +2,6 @@ using SmartX.Shared.Telemetry;
 
 namespace SmartX.Api.Services;
 
-/// <summary>
-/// Mutable per-sensor working state: the jagged-array batch history buffer
-/// plus a short rolling window used to render the dashboard sparkline.
-/// </summary>
 internal sealed class SensorTelemetryState
 {
     public TelemetryHistoryBuffer<double> Buffer { get; }

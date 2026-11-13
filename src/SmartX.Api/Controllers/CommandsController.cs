@@ -51,7 +51,6 @@ public sealed class CommandsController : ControllerBase
         return Accepted(new { commandId = command.Id, queuedAs = request.Severity.ToString() });
     }
 
-    /// <summary>Reverts the most recently executed command by re-queueing its inverse.</summary>
     [HttpPost("undo")]
     public IActionResult Undo()
     {
@@ -63,12 +62,11 @@ public sealed class CommandsController : ControllerBase
         return Accepted(new { commandId = inverse.Id, type = inverse.Type.ToString(), sensorId = inverse.SensorId });
     }
 
-    /// <summary>Most recent commands actually executed, newest first (off the undo stack).</summary>
+
     [HttpGet("history")]
     public ActionResult<IReadOnlyList<DeviceCommand>> RecentHistory([FromQuery] int take = 20) =>
         Ok(_worker.RecentHistory(take));
 
-    /// <summary>Timestamp-ordered timeline entries for one sensor (backed by SortedDictionary).</summary>
     [HttpGet("timeline/{sensorId}")]
     public ActionResult<IReadOnlyList<LogEntryDto>> Timeline(string sensorId, [FromQuery] int take = 50)
     {

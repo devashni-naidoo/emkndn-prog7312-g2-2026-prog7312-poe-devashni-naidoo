@@ -5,21 +5,7 @@ using SmartX.Shared.Models;
 
 namespace SmartX.Api.Services;
 
-/// <summary>
-/// Part 3: models the IoT mesh as a <see cref="MeshGraph"/> and answers the
-/// Network Topology page's questions with BFS/DFS (connectivity and
-/// failover), Prim's minimum spanning tree (power-efficient routing) and
-/// AVL-tree range queries (historical telemetry).
-///
-/// The wireless links are *simulated* from the registered sensors, because
-/// the ESP32 simulator has no radio: each zone gets a gateway wired to the
-/// central server, each sensor links to its zone gateway and to its nearest
-/// registration-order neighbours, and adjacent zones are bridged by one
-/// cross-zone link. Link costs (relative transmit energy per packet) are
-/// derived from a stable hash of the MAC addresses so the same network always
-/// produces the same graph. A node counts as "down" when an operator marks it
-/// down, or when its telemetry has gone silent (<see cref="TelemetryStatus.Disconnected"/>).
-/// </summary>
+
 public sealed class TopologyService
 {
     public const string ServerId = "SERVER";
@@ -43,8 +29,6 @@ public sealed class TopologyService
         public required Dictionary<string, string> DownReasons { get; init; }
         public bool IsAlive(string id) => !DownReasons.ContainsKey(id);
     }
-
-    // ------------------------------------------------------------------ graph
 
     private static string GatewayId(string zone) => GatewayPrefix + zone.Trim().ToUpperInvariant();
 
@@ -139,12 +123,6 @@ public sealed class TopologyService
         return new MeshView { Graph = graph, DownReasons = down };
     }
 
-    // -------------------------------------------------------------- resolving
-
-    /// <summary>
-    /// Accepts a sensor Id, MAC address or Node ID (exact, case-insensitive;
-    /// a unique partial match also works) and returns the graph vertex id.
-    /// </summary>
     public string? ResolveVertex(string? input)
     {
         if (string.IsNullOrWhiteSpace(input)) return null;
@@ -176,7 +154,6 @@ public sealed class TopologyService
         return partial.Count == 1 ? partial[0].Id : null;
     }
 
-    // --------------------------------------------------------------- topology
 
     public async Task<TopologyDto> GetTopologyAsync()
     {
@@ -243,7 +220,6 @@ public sealed class TopologyService
         return dto;
     }
 
-    // ------------------------------------------------------------------ route
 
     public async Task<RouteDto> GetRouteAsync(string? identifier, string? mode)
     {
@@ -341,13 +317,6 @@ public sealed class TopologyService
         return hops;
     }
 
-    // ----------------------------------------------------------- connectivity
-
-    /// <summary>
-    /// Traverses (BFS or DFS) the subnet behind a gateway to list which
-    /// devices are still connected, which are down, and - for every device
-    /// that lost its way out - where it can hop instead.
-    /// </summary>
     public async Task<ConnectivityDto?> GetConnectivityAsync(string? gatewayId, string? algorithm)
     {
         string? start = string.IsNullOrWhiteSpace(gatewayId) ? ServerId : ResolveVertex(gatewayId);
@@ -427,9 +396,6 @@ public sealed class TopologyService
 
     private static NodeRefDto Ref(MeshVertex v) => new() { Id = v.Id, Label = v.Label, Kind = v.Kind.ToString() };
 
-    // ----------------------------------------------------------- manual faults
-
-    /// <summary>Marks a sensor or gateway down (simulated failure) or back up.</summary>
     public bool SetDown(string? identifier, bool down)
     {
         string? id = ResolveVertex(identifier);
@@ -440,7 +406,7 @@ public sealed class TopologyService
         return true;
     }
 
-    // ---------------------------------------------------------------- history
+
 
     public HistoryQueryResultDto? QueryHistory(string? identifier, DateTimeOffset fromUtc, DateTimeOffset toUtc, int take)
     {
@@ -496,8 +462,6 @@ public sealed class TopologyService
         return dto;
     }
 
-    // ------------------------------------------------------------------- demo
-
     private static readonly (string Zone, string SubZone, string Node, SensorCategory Category)[] DemoSensors =
     {
         ("Zone A", "Block 1", "ESP32-A1", SensorCategory.Environmental),
@@ -512,11 +476,6 @@ public sealed class TopologyService
         ("Zone C", "Block 2", "ESP32-C3", SensorCategory.Environmental)
     };
 
-    /// <summary>
-    /// Registers a ready-made 10-sensor, 3-zone network (idempotent),
-    /// back-fills six hours of history into the AVL trees so range queries
-    /// have something to find, and starts the live simulators.
-    /// </summary>
     public Task<SeedDemoResultDto> SeedDemoAsync()
     {
         var result = new SeedDemoResultDto();
@@ -586,3 +545,11 @@ public sealed class TopologyService
         return minutes + 1;
     }
 }
+
+/*
+ * Title:        The FNV Non-Cryptographic Hash Algorithm (FNV-1a)
+ * Author:       Fowler, G., Noll, L.C., Vo, K.-P., Eastlake, D. and Hansen, T.
+ * Version:      Latest Internet-Draft (check the draft number on the page)
+ * Date:         2025
+ * Availability: https://datatracker.ietf.org/doc/draft-eastlake-fnv/
+ */

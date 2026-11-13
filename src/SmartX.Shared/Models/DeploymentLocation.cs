@@ -1,12 +1,5 @@
 namespace SmartX.Shared.Models;
 
-/// <summary>
-/// Physical / logical deployment address of a sensor: Room, Zone and Node ID,
-/// as required by the sensor payload management functional requirement.
-/// This is also the leaf-level detail used to build the
-/// Facility -> Zone -> Sub-Zone -> Node hierarchy validated recursively
-/// by <see cref="SmartX.Shared.Validation.DeploymentValidator"/>.
-/// </summary>
 public sealed class DeploymentLocation
 {
     public string Facility { get; set; } = string.Empty;

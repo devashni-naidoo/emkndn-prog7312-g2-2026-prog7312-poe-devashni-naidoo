@@ -3,11 +3,6 @@ using SmartX.Shared.Dtos;
 
 namespace SmartX.Api.Services;
 
-/// <summary>
-/// The Automated Action Engine: turns the historical alert -> command
-/// frequency map built up by <see cref="AlertCoordinator.Patterns"/> into
-/// concrete "Suggested Actions" for whatever alerts are active right now.
-/// </summary>
 public sealed class PredictiveInsightService
 {
     private readonly AlertCoordinator _alerts;

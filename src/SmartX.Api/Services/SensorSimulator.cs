@@ -3,13 +3,8 @@ using SmartX.Shared.Models;
 
 namespace SmartX.Api.Services;
 
-/// <summary>
 /// Generates realistic simulated telemetry for a registered sensor so the
-/// dashboard's real-time engagement strategy (sparklines, delta indicators,
-/// threshold colour coding) can be demonstrated without physical hardware —
-/// directly supporting the "simulate or attach custom sensor registration
-/// records" requirement.
-/// </summary>
+/// dashboard's real-time engagement strategy 
 public sealed class SensorSimulator
 {
     private readonly TelemetryStore _store;

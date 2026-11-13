@@ -1,11 +1,5 @@
 namespace SmartX.Shared.DataStructures;
 
-/// <summary>
-/// Array-backed binary min-heap (Part 3 - Heaps requirement). The element
-/// with the smallest priority is always at index 0; Push/Pop sift an item up
-/// or down the implicit tree (parent of i = (i-1)/2) in O(log n). Used by
-/// Prim's algorithm to always pick the cheapest wireless link next.
-/// </summary>
 public sealed class MinHeap<TElement, TPriority> where TPriority : IComparable<TPriority>
 {
     private readonly List<(TElement Element, TPriority Priority)> _items = new();
@@ -73,3 +67,11 @@ public sealed class MinHeap<TElement, TPriority> where TPriority : IComparable<T
         }
     }
 }
+
+/*
+ * Title:        Introduction to Algorithms (binary heap: sift-up and sift-down)
+ * Author:       Cormen, T.H., Leiserson, C.E., Rivest, R.L. and Stein, C.
+ * Version:      4th edition (2022)
+ * Date:         2022
+ * Availability: https://mitpress.mit.edu/9780262046305/introduction-to-algorithms/
+ */

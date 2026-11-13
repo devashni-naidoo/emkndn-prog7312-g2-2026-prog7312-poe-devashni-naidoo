@@ -3,12 +3,6 @@ using SmartX.Shared.Commands;
 
 namespace SmartX.Api.Services;
 
-/// <summary>
-/// Tracks the simulated physical state a manual override command actually
-/// changes (relay on/off, valve open/shut, pump running) so toggling a
-/// device from the dashboard has an observable, queryable effect rather
-/// than just logging "command sent" into the void.
-/// </summary>
 public sealed class DeviceStateService
 {
     private readonly ConcurrentDictionary<string, bool> _relayOn = new();
@@ -19,7 +13,6 @@ public sealed class DeviceStateService
     public bool IsValveOpen(string sensorId) => _valveOpen.GetValueOrDefault(sensorId, true);
     public bool IsPumpRunning(string sensorId) => _pumpRunning.GetValueOrDefault(sensorId, false);
 
-    /// <summary>Applies a command's effect and returns a human-readable outcome message.</summary>
     public string Apply(DeviceCommand command)
     {
         switch (command.Type)
